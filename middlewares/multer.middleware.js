@@ -3,19 +3,19 @@ import multer from 'multer';
 
 const upload = multer({
     dest: "uploads/",
-    limits: {fileSize: 50 * 1024 * 1024},
+    limits: {fileSize: 10 * 1024 * 1024}, 
     storage: multer.diskStorage({
         destination: "uploads/",
-        filename: (_req, file, cb) => {
+        filename: (_req, file, cb) => { 
             cb(null, file.originalname);
         }
     }), 
     fileFilter: (_req, res, cb) => {
         let ext = path.extname(file.originalname);
-
+ 
         if(
             ext !== ".jpg" &&
-            ext !== ".jpeg" &&
+            ext !== ".jpeg" && 
             ext !== ".webp" &&
             ext !== ".png" &&
             ext !== ".mp4" &&
