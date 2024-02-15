@@ -8,7 +8,8 @@ const userSchema = new Schema({
     type: String,
     required: [true, 'Username is required'],
     trim: true,
-    minlength: [7, 'Username should be 7 character long'],
+    lowercase: true,
+    minlength: [6, 'Username should be minimum 6 characters long'],
     unique: [true, 'Username is already taken'],
   },
   email: {
@@ -42,9 +43,9 @@ const userSchema = new Schema({
     trim: true,
     default: ''
   },
-  profilePicture: {
-    resourceId : String,
-    resourceUrl : String
+  avatar: {
+    public_id : String,
+    secure_url : String
   },
   role: {
     type: String,
@@ -72,6 +73,14 @@ const userSchema = new Schema({
   isBlocked: {
     type: Boolean,
     default: false
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  isClosed: {
+    type: Boolean,
+    default: false
   }
 }, {timestamps: true});
 
@@ -88,7 +97,7 @@ userSchema.methods = {
 
   generateJWTToken : async function () {
     return jwt.sign(
-      {id:this._id, username: this.username, role: this.role},
+      {id:this._id, username: this.username, role: this.role, isBlocked: this.isBlocked, isVerified: this.isVerified, isClosed: this.isClosed},
       process.env.JWT_SECRET,
       {expiresIn: process.env.JWT_EXPIRTY}
     )
@@ -98,6 +107,8 @@ userSchema.methods = {
     const token = crypto.randomBytes(20).toString('hex');
 
     this.resetToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    this.resetTokenExpiry = Date.now() + 15 * 60 * 1000;
 
     return token;
 

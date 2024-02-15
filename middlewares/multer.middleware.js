@@ -10,7 +10,7 @@ const upload = multer({
             cb(null, file.originalname);
         }
     }), 
-    fileFilter: (_req, res, cb) => {
+    fileFilter: (_req, file, cb) => {
         let ext = path.extname(file.originalname);
  
         if(

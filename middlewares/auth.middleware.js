@@ -6,12 +6,11 @@ import asyncHandler from './async.middleware.js';
 export const isLoggedIn = asyncHandler(async (req, res, next) => {
     try{
         const token = req.cookies?.token || req.header("Authorization")?.replace("Bearer ","");
-
         if(!token) {
             return next(new AppError("Unauthorized request", 401));
         }
 
-        const decoded = jwt.verify(authtoken, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         if(!decoded) {
             return next(new AppError("Unauthorized request", 401));
@@ -20,13 +19,13 @@ export const isLoggedIn = asyncHandler(async (req, res, next) => {
         req.user = decoded;
 
         next();
-    } catch {
-        console.log("An error occurred while authenticating!");
+    } catch (err){
+        console.log("An error occurred while authenticating!",err);
         return next(new AppError("Something went wrong!", 500))
     }
 })
 
-export const autorizeRoles = (...roles) => {
+export const authorizeRoles = (...roles) => {
     asyncHandler(async (req, _res, next) => {
         if(!roles.includes(req.user.role)) {
             return next(
@@ -36,3 +35,4 @@ export const autorizeRoles = (...roles) => {
         next();
     })
 }
+

@@ -3,11 +3,11 @@ import { Schema, model } from 'mongoose';
 const blogSchema = new Schema({
   title: {
     type: String,
-    required: true
+    required: [true, "Title is required"]
   },
   content: {
     type: Object,
-    required: true
+    required: [true, "Content is required for the post."]
   },
   author: {
     type: Schema.Types.ObjectId,
@@ -18,10 +18,7 @@ const blogSchema = new Schema({
     type: Date,
     default: Date.now
   },
-  tags: {
-    type: [String],
-    default: []
-  },
+  tags: [String],
   likes: {
     type: Number,
     default: 0
@@ -46,12 +43,10 @@ const blogSchema = new Schema({
   },
   public_image: {
     resource_id: {
-        string: true,
-        required: true
+        type: String
     },
     resource_url: {
-        string: true,
-        required: true
+        type: String
     }
   }
 }, {timestamps: true});
