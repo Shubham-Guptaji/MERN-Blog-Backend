@@ -363,4 +363,230 @@ export const userProfile = asyncHandler(async function (req, res, next) {
 
 })
 
+/**
+ * @BlockUser
+ * @Route {{URL}}/api/v1/user/profile/:username/block
+ * @Method patch
+ * @Access private( Only admin )
+ * @ReqData username
+ */
+
+export const blockUser = asyncHandler(async function(req, res, next) {
+    if(req.user.role != "admin"){
+        return next(new AppError("Unauthorized request", 401));
+    }
+    const { username } = req.params;
+    const user = await User.findOne({username});
+    if(!user) {
+        return next(new AppError("User not found.", 404));
+    }
+    user.isBlocked = true;
+    await user.save();
+    
+    res.status(200).json({
+        success:true,
+        message:"The account has been blocked."
+    })
+})
+
+/**
+ * @UnBlockUser
+ * @Route {{URL}}/api/v1/user/profile/:username/unblock
+ * @Method patch
+ * @Access private( Only admin )
+ * @ReqData username
+ */
+
+export const unBlockUser = asyncHandler(async function(req, res, next) {
+    if(req.user.role != "admin"){
+        return next(new AppError("Unauthorized request", 401));
+    }
+    const { username } = req.params;
+    const user = await User.findOne({username});
+    if(!user) {
+        return next(new AppError("User not found.", 404));
+    }
+    user.isBlocked = false;
+    await user.save();
+    
+    res.status(200).json({
+        success:true,
+        message:"The account has been unblocked."
+    })
+})
+
+/**
+ * @CloseAccount
+ * @Route {{URL}}/api/v1/user/profile/:username/close
+ * @Method patch
+ * @Access private( Only admin and user )
+ * @ReqData username
+ */
+
+export const CloseAccount = asyncHandler(async function(req, res, next) {
+    const {username} = req.params;
+    if(!username) {
+        return next(new AppError("Please provide username.", 400));
+    }
+    let user = await User.findOne({username}).select('-password');
+    if(!user) {
+        return next(new AppError("Username is invalid", 404));
+    }
+    if(req.user.role == 'user' && req.user.username !== username){
+        return next(new AppError("You don't have permission to perform this action on another user's profile.", 403))
+    }
+    user.isClosed = true;
+    await user.save();
+
+    res.cookie("token", null, {
+        secure: process.env.NODE_ENV === 'production' ? true : false,
+        maxAge: 0,
+        httpOnly: true
+    });
+
+    res.status(200).json({
+        success: true,
+        message: "Account closed successfully"
+    })
+    
+})
+
+/**
+ * @GenerateVerifyToken
+ * @Route {{URL}}/api/v1/user/verify/
+ * @Method post
+ * @Access private( Only logged in user )
+ * @ReqData userid
+ */
+
+export const VerifyTokenEmail = asyncHandler(async function(req, res, next) {
+    const user = await User.findById(req.user.id);
+    if(!user) {
+        return next(new AppError("User not found!", 404));
+    }
+
+    const emailtoken = user.generateVerifyToken();
+
+    await user.save();
+    const verifyAccountUrl = `${process.env.FRONTEND_URL}/api/v1/user/profile/:${user.username}/verify/${emailtoken}`;
+    const subject = 'Verify account in Alcodemy Blog';
+    const message = `
+    <html>
+        <head>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                }
+
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #f8f9fa;
+                    border: 1px solid #dee2e6;
+                    border-radius: 5px;
+                }
+
+                .title {
+                    font-size: 24px;
+                    margin-bottom: 20px;
+                }
+
+                .message {
+                    font-size: 16px;
+                    margin-bottom: 20px;
+                }
+
+                .link {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+
+                .link:hover {
+                    text-decoration: underline;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="title">Verify Account</div>
+                <div class="message">You can verify your password by clicking <a href="${verifyAccountUrl}" target="_blank" class="link">Verify your account</a></div>
+                <div class="message">If the above link does not work for some reason then copy paste this link in a new tab: ${verifyAccountUrl}</div>
+            </div>
+        </body>
+    </html>
+`;
+
+    try {
+        await sendEmail(user.email, subject, message);
+        res.status(200).json({
+            success: true,
+            message: `Verify token has been sent to ${email} successfully`,
+        });
+    } catch (error) {
+        user.verifyToken = undefined;
+        user.verifyTokenExpiry = undefined;
+
+        await user.save();
+
+        return next(
+            new AppError(
+                error.message || 'Something went wrong, please try again.',
+                500
+            )
+        );
+    }
+
+})
+
+/**
+ * @VerifyAccount
+ * @Route {{URL}}/api/v1/user/profile/:username/verify/:token
+ * @Method patch
+ * @Access public ( AnyOne )
+ * @ReqData token
+ */
+
+export const VerifyAccount = asyncHandler(async function(req, res, next) {
+    let username = req.params.username;
+    let verifyToken = req.params.token;
+    let user = await User.findOne({ 
+        username,
+        verifyToken: verifyToken,
+        verifyTokenExpiry: { $gt: Date.now() },        
+    }).select('-password');
+
+    if (!user) {
+        return next(new AppError("Invalid Token", 404));
+    }
+    user.isVerified = true;
+    user.verifyToken = undefined;
+    user.verifyTokenExpiry = 0;
+
+    res.status(200).json({
+        success: true,
+        message: "Account Verified Successfully"
+    })
+    
+})
+
+function userinfo(user) {
+    if(user.isClosed){
+        return {
+            notActive: true,
+            message: "This account is Closed."
+        }
+    }else if(user.isBlocked){
+        return {
+            notActive: true,
+            message: "This Account has been Blocked."
+        }
+    }
+    return {
+        notActive: false,
+    }
+}
+
  

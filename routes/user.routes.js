@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isLoggedIn, authorizeRoles } from "../middlewares/auth.middleware.js";
 import upload from "../middlewares/multer.middleware.js";
-import { changePassword, forgotPassword, loginUser, registerUser, resetPassword, userLogOut, userProfile } from "../controllers/user.controller.js";
+import { CloseAccount, VerifyAccount, VerifyTokenEmail, blockUser, changePassword, forgotPassword, loginUser, registerUser, resetPassword, unBlockUser, userLogOut, userProfile } from "../controllers/user.controller.js";
 
 const router = Router();
 
@@ -21,6 +21,11 @@ router.post('/forgotpassword', forgotPassword);
 router.post('/reset/:resetToken', resetPassword);
 router.post("/change-password", isLoggedIn, changePassword);
 router.get('/profile/:username', isLoggedIn, userProfile);
+router.patch('/profile/:username/unblock', isLoggedIn, unBlockUser);
+router.patch('/profile/:username/block', isLoggedIn, blockUser);
+router.patch('/profile/:username/close', isLoggedIn, CloseAccount);
+router.post('/verify/',isLoggedIn, VerifyTokenEmail);
+router.patch('/profile/:username/verify/:token',VerifyAccount)
 
 
 export default router;

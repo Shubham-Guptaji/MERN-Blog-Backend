@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import asyncHandler from "../middlewares/async.middleware.js";
 import Blog from "../models/blog.model.js";
+import Comment from '../models/comment.model.js';
 import User from "../models/user.model.js";
 import AppError from "../utils/appError.js";
 import fs from 'fs/promises';
@@ -100,16 +101,16 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
     const authors = await User.find({}, { _id: 1 })
         .sort({ followers: -1 })
         .limit(20);
-        
+
     const authorIds = authors.map(author => author._id);
-    
+
     const popularAuthorPosts = await Blog.find({ author: { $in: authorIds }, isPublished: true })
         .limit(20)
 
     if (!trendingPosts || !popularAuthorPosts) {
         return next(new AppError("Some Error Occurred", 500))
     }
-    res.status(200).json({ success: true, message: "Posts fetched successfully", data: {trendingPosts, popularAuthorPosts} });
+    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, popularAuthorPosts } });
 })
 
 /**
@@ -122,7 +123,7 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
 
 export const tagBlog = asyncHandler(async function (req, res, next) {
     const { tagsearch } = req.body;
-    if(!tagsearch) {
+    if (!tagsearch) {
         return next(new AppError("Tag is required to search post"))
     }
 
@@ -130,13 +131,13 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
 
     const posts = await Blog.find({
         $or: [
-          { tags: { $regex: tagRegex } },
-          { title: { $regex: new RegExp(tagsearch, "i") } },
+            { tags: { $regex: tagRegex } },
+            { title: { $regex: new RegExp(tagsearch, "i") } },
         ],
-      });
+    });
 
-    if(!posts.length){
-       return next(new AppError("Post not found with related search", 404))
+    if (!posts.length) {
+        return next(new AppError("Post not found with related search", 404))
     }
 
     res.status(200).json({
@@ -154,10 +155,10 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
  * @ReqData blogId
  */
 
-export const getBlogpost = asyncHandler(async function(req, res, next) {
+export const getBlogpost = asyncHandler(async function (req, res, next) {
     const { blogid } = req.params;
     try {
-        const objectId = new mongoose.Types.ObjectId(blogid);
+        const objectId = mongoose.Types.ObjectId.createFromHexString(blogid);
         const postDetails = await Blog.aggregate([
             { $match: { _id: objectId, isPublished: true } },
             {
@@ -166,7 +167,7 @@ export const getBlogpost = asyncHandler(async function(req, res, next) {
                     localField: 'author',
                     foreignField: '_id',
                     as: 'author'
-                }
+                } 
             },
             {
                 $addFields: {
@@ -193,13 +194,79 @@ export const getBlogpost = asyncHandler(async function(req, res, next) {
             return next(new AppError("Post not found", 404));
         }
 
+        const comments = await Comment.aggregate([
+            { $match: { blog: objectId } },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'author',
+                    foreignField: '_id',
+                    as: 'commentAuthor'
+                }
+            },
+            {
+                $addFields: {
+                    commentAuthor: { $arrayElemAt: ['$commentAuthor', 0] }
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    content: 1,
+                    createdAt: 1,
+                    'commentAuthor.fullName': { $concat: ['$commentAuthor.firstName', ' ', '$commentAuthor.lastName'] }
+                }
+            }
+        ]);
+
         res.status(200).json({
             success: true,
             message: "Post fetched successfully",
-            postDetails
+            postDetails,
+            comments
         });
     } catch (error) {
         console.error('Error fetching post details:', error);
         return next(new AppError("Invalid blog ID", 400));
     }
 });
+
+
+/**
+ * @UpdatePost
+ * @Route {{URL}}/api/v1/blogs/:id
+ * @Method put
+ * @Access private (only author and admin)
+ * @ReqData blogId
+ */
+
+export const UpdatePost = asyncHandler(async function (req, res, next) {
+    const { id } = req.params;
+    const blog = await Blog.findById(id);
+    if(blog._id.toString() != req.user.id) {
+        return next(new AppError("Not authorized", 400))
+    }
+
+    const updatedpost = await Blog.findByIdAndUpdate(
+        id,
+        {
+            $set: req.body,
+        },
+        {
+            runValidators: true,
+        }
+    );
+
+    if (!updatedpost) {
+        return next(new AppError('Invalid course id or course not found.', 400));
+    }
+
+    res.status(200).json({
+        success: true,
+        message: 'Course updated successfully',
+        updatedpost
+    });
+})
+
+
+

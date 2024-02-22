@@ -7,7 +7,7 @@ const router = Router();
 
 
 router.post("/blog",isLoggedIn, upload.single("postImage"), createBlog);
-
+router.put("/:id", isLoggedIn, )
 router.get("/", getHomeBlogs);
 
 router.post("/tag", tagBlog);

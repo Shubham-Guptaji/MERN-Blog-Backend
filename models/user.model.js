@@ -62,12 +62,10 @@ const userSchema = new Schema({
       ref: 'Blog'
     }
   ],
-  followers: [
-    {
-      type: Schema.Types.ObjectId,
-      ref: 'User'
-    }
-  ],
+  followers: {
+    type: Number,
+    default: 0
+  },
   resetToken: String,
   resetTokenExpiry: Date,
   isBlocked: {
@@ -81,7 +79,9 @@ const userSchema = new Schema({
   isClosed: {
     type: Boolean,
     default: false
-  }
+  },
+  verifyToken: String,
+  verifyTokenExpiry: Date
 }, {timestamps: true});
 
 
@@ -112,6 +112,15 @@ userSchema.methods = {
 
     return token;
 
+  },
+
+  generateVerifyToken: async function () {
+    const token = crypto.randomBytes(20).toString('hex');
+
+    this.verifyToken = crypto.createHash('sha256').update(token).digest('hex');
+    this.verifyTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    return token;
   }
 }
 

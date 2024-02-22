@@ -13,8 +13,8 @@ const followerSchema = new Schema({
   },
   blog: {
     type: Schema.Types.ObjectId,
-    ref: 'Blog',
-    required: true
+    ref: 'Blog'
+    // required: true
   }
 }, {timestamps: true});
 

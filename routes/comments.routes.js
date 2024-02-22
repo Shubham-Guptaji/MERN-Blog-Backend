@@ -1,16 +1,11 @@
 import { Router } from "express";
 import { isLoggedIn } from "../middlewares/auth.middleware.js";
+import { CreateComment, deleteComment, editComment } from "../controllers/comments.controller.js";
 
 const router = Router();
 
-router.post('/comment', isLoggedIn);
-router
-    .route('/contact')
-        .post(isLoggedIn)
-        .delete(isLoggedIn)
-        .get(isLoggedIn)
-        .put(isLoggedIn)
-
-
+router.post('/', isLoggedIn, CreateComment);
+router.delete('/:commentId', isLoggedIn, deleteComment);
+router.put('/:commentId',isLoggedIn, editComment);
 
 export default router;
