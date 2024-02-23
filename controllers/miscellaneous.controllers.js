@@ -1,6 +1,7 @@
 import asyncHandler from "../middlewares/async.middleware.js";
 import Blog from "../models/blog.model.js";
 import Follower from "../models/follower.model.js";
+import Like from "../models/like.model.js";
 import User from "../models/user.model.js";
 import AppError from "../utils/appError.js";
 
@@ -49,6 +50,17 @@ export const followUser = asyncHandler(async function (req, res, next) {
   const { blogId, authUsername } = req.body;
   if(!authUsername) {
     return next(new AppError("Invalid Author", 404))
+  }
+
+  //  Check if user is already following the blogger or not
+  const author = await User.findOne({username: authUsername});
+  if(!author) {
+    return next(new AppError("Invalid Author", 404))
+  }
+  let followInfo = await Follower.findOne({author: author._id, user: req.user.id});
+  
+  if(followInfo){
+    return next(new AppError("You have already followed this Blogger.", 409));
   }
   let follow;
   try {
@@ -119,4 +131,67 @@ export const unfollowUser = asyncHandler(async function (req, res, next) {
     success: true,
     message: "Unfollowed Successfully"
   })
+})
+
+/**
+ * @LikePost
+ * @Route  {{URL}}/api/v1/like/:postId
+ * @Method post
+ * @Access private (logged in users)
+ * @ReqData postId
+ */
+
+export const LikePost = asyncHandler(async function(req, res, next) {
+  const  {postId} = req.params;
+  
+  // Check if the user already liked this post
+  let likeinfo = await Like.findOne({blog : postId, user: req.user.id});
+  if(likeinfo) {
+    return next(new AppError('You have already Liked this Post', 400));
+  }
+
+  // Create a new like
+  likeinfo = await Like.create({ blog: postId, user: req.user.id });
+
+  // Increment the likes count of the Blog by 1
+  const blog = await Blog.findByIdAndUpdate(postId, { $inc:{likes: 1} },{new:true});
+
+  if(!blog) {
+    return next(new AppError('Blog not found!', 404));
+  }
+
+  // Send response
+  res.status(200).json({
+    success:true,
+    message: "Liked the post",
+    data:likeinfo
+  })
+})
+
+/**
+ * @DisLikePost
+ * @Route  {{URL}}/api/v1/dislike/:postId
+ * @Method delete
+ * @Access private (logged in users)
+ * @ReqData postId
+ */
+
+export const DisLikePost = asyncHandler(async function (req, res, next) {
+  const {postId} = req.params;
+
+  // Get the information about the current user's like on this post
+  let likeInfo = await Like.findOneAndDelete({blog:postId , user:req.user.id});
+
+  if (!likeInfo){
+    return next(new AppError("You haven't liked this post yet", 400))
+  }
+
+  // Decrement the number of likes for the blog
+  await Blog.findByIdAndUpdate(postId, { $inc : { likes : -1 } }).catch((err)=>{console.log(err)});
+  
+  // Return the updated info to the client side
+  res.status(200).json({
+      status:'success',
+      data:likeInfo
+  });
 })

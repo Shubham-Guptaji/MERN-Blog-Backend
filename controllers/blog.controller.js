@@ -55,7 +55,7 @@ export const createBlog = asyncHandler(async function (req, res, next) {
         try {
             const result = await cloudinary.v2.uploader.upload(
                 req.file.path, {
-                folder: 'blog/posts/postImage',
+                folder: `blog/posts/${userUpdate.username}`,
                 resource_type: 'image',
             }
             )
@@ -96,7 +96,32 @@ export const createBlog = asyncHandler(async function (req, res, next) {
 export const getHomeBlogs = asyncHandler(async function (req, res, next) {
     const trendingPosts = await Blog.find({ isPublished: true })
         .sort({ likes: -1 })
-        .limit(6)
+        .limit(15)
+
+    // Guard against empty trendingPosts to prevent errors:
+    if (!trendingPosts || trendingPosts.length === 0) {
+        return res.status(200).json({ success: true, message: "No trending posts found." });
+    }
+
+    // Extract keywords from trending posts using Lodash:
+    const keywords = [];
+        for (const post of trendingPosts) {
+            if (post.tags) {
+                // Filter empty strings and convert to lowercase for case-insensitivity
+                const filteredTags = post.tags.filter(tag => tag.trim())
+                    .map(tag => tag.toLowerCase());
+
+                // Remove duplicates efficiently using a Set
+                const uniqueTags = new Set(filteredTags);
+
+                // Add unique tags to the keywords array
+                keywords.push(...uniqueTags);
+            }
+        }
+
+    // Take the first 15 unique keywords:
+
+    const topKeywords = keywords.slice(0, keywords.length > 15 ? 15 : keywords.length);
 
     const authors = await User.find({}, { _id: 1 })
         .sort({ followers: -1 })
@@ -110,7 +135,7 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
     if (!trendingPosts || !popularAuthorPosts) {
         return next(new AppError("Some Error Occurred", 500))
     }
-    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, popularAuthorPosts } });
+    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, popularAuthorPosts, topKeywords } });
 })
 
 /**
@@ -152,13 +177,13 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
  * @Route {{URL}}/api/v1/blogs/
  * @Method get
  * @Access public
- * @ReqData blogId
+ * @ReqData id
  */
 
 export const getBlogpost = asyncHandler(async function (req, res, next) {
-    const { blogid } = req.params;
+    const { id } = req.params;
     try {
-        const objectId = mongoose.Types.ObjectId.createFromHexString(blogid);
+        const objectId = mongoose.Types.ObjectId.createFromHexString(id);
         const postDetails = await Blog.aggregate([
             { $match: { _id: objectId, isPublished: true } },
             {
@@ -266,6 +291,42 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
         message: 'Course updated successfully',
         updatedpost
     });
+})
+
+/**
+ * @DeletePost
+ * @Route {{URL}}/api/v1/blogs/:id
+ * @Method delete
+ * @Access private (only author and admin)
+ * @ReqData blogId
+ */
+
+export const DeletePost = asyncHandler(async function (req, res, next) {
+    const  { id } = req.params;
+    
+    let blog = await Blog.findById(id);
+
+    //Checking if the user is owner of this post
+    if(!blog || blog.user != req.user.id || req.user.role != "admin"){
+       return next(new AppError(`Not authorized to delete this post`, 401));
+    }
+    await blog.remove();
+
+    try{
+        // Remove the resources and files related to the Blog post from cloudinary
+        if(blog.public_image.resource_id){
+            await cloudinary.v2.uploader.destroy(blog.public_image.resource_id);
+        }
+        
+    }catch(error) {
+        console.log(error);
+        return next(new AppError("Server error", 500))
+    }
+
+    res.status(204).json({
+        success: true,
+        message:'Blog deleted'
+    })
 })
 
 

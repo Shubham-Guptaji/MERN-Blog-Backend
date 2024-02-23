@@ -28,11 +28,13 @@ app.get('/ping',(_req, res) => {
 import userRoutes from './routes/user.routes.js';
 import blogRoutes from './routes/blog.routes.js';
 import commentRoutes from './routes/comments.routes.js';
+import resourceRoutes from './routes/resources.routes.js';
 import miscRoutes from './routes/miscellaneous.routes.js';
 
 app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/blogs', blogRoutes);
 app.use('/api/v1/comments', commentRoutes);
+app.use('/api/v1/resource', resourceRoutes)
 app.use('/api/v1', miscRoutes);
 
 
