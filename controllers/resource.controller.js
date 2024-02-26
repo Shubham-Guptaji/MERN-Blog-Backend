@@ -1,6 +1,6 @@
-import asyncHandler from "../middlewares/async.middleware";
-import Resourcefile from "../models/resources.model";
-import AppError from "../utils/appError";
+import asyncHandler from "../middlewares/async.middleware.js";
+import Resourcefile from "../models/resources.model.js";
+import AppError from "../utils/appError.js";
 import cloudinary from "cloudinary";
 import fs from "fs/promises";
 
@@ -19,7 +19,7 @@ export const AddResource = asyncHandler(async function(req, res, next) {
         
         let result = await cloudinary.v2.uploader.upload( 
             req.file.path, {
-            folder: `blog/resource/${req.user.username}`
+            folder: `blog/resource/${req.user.username}` 
             }
         );
         if (result) {
@@ -43,7 +43,7 @@ export const AddResource = asyncHandler(async function(req, res, next) {
             message: "File Uploaded successfully",
             data: {
                 resource_id : result.public_id,
-                resource_url : result.secure_url
+                resource_url : result.secure_url 
             }
         });
     }catch(err){

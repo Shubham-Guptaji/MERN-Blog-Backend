@@ -7,11 +7,11 @@ const resourceSchema = new mongoose.Schema({
     },
     resource : {
         resource_id: {
-            string: true,
+            type: String,
             required: true
         },
         resource_url: {
-            string: true,
+            type: String,
             required: true
         }
     }

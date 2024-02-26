@@ -12,9 +12,9 @@ router.post('/forgotpassword', forgotPassword);
 router.post('/reset/:resetToken', resetPassword);
 router.post("/change-password", isLoggedIn, changePassword);
 router.get('/profile/:username', isLoggedIn, userProfile);
-router.patch('/profile/:username/unblock', isLoggedIn, unBlockUser);
-router.patch('/profile/:username/block', isLoggedIn, blockUser);
-router.patch('/profile/:username/close', isLoggedIn, CloseAccount);
+router.patch('/profile/:id/unblock', isLoggedIn, unBlockUser);
+router.patch('/profile/:id/block', isLoggedIn, blockUser);
+router.patch('/profile/:id/close', isLoggedIn, CloseAccount);
 router.post('/verify/',isLoggedIn, VerifyTokenEmail);
 router.patch('/profile/:username/verify/:token',VerifyAccount)
 router.patch('/profile', isLoggedIn, upload.single('avatar'), updateProfile)

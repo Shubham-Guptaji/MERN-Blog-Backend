@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import asyncHandler from "../middlewares/async.middleware.js";
 import Blog from "../models/blog.model.js";
 import Follower from "../models/follower.model.js";
@@ -99,6 +100,76 @@ export const followUser = asyncHandler(async function (req, res, next) {
     return next(new AppError("Some Error occurred! Try again later ", 500))
   }
 })
+
+/**
+ * @GetFollowers
+ * @Route {{URL}}/api/v1/followers
+ * @Method post
+ * @Access private(only for authors)
+ * @ReqData username, id, skip, limit
+ */
+
+export const userFollowers = asyncHandler(async function (req, res, next) {
+  const { id, username } = req.user;
+  const skip = req.body.skip || 0;
+  const limit = (req.body.limit || 10) + 1;
+  let newId = mongoose.Types.ObjectId.createFromHexString(id);
+  const getFollowers = await Follower.aggregate([
+    { $match : { author : newId }},
+    { $lookup : {
+      from : 'users',
+      localField : 'user',
+      foreignField : '_id',
+      as : 'user_info'
+    }},
+    
+    {
+      $facet: {
+        user_info: [
+          { $skip: skip },
+          { $limit: limit }
+        ]
+      }
+    },
+    { $unwind: '$user_info' }, // Deconstruct the array of follower documents
+    {
+      $project: {
+        user_info : 1,
+        blog: 1
+      }
+    }
+  ]);
+  let areMoreFollowers = false;
+  // Check if user_info array exists before accessing it
+  if (getFollowers) {
+    let result = [];
+    if(getFollowers.length === 11) areMoreFollowers = true;
+    let followerData = getFollowers.length === 11 ? getFollowers.slice(0,11) : getFollowers;
+    (followerData).map((data) => {
+      let obj = { 
+        blogId : data.user_info.blog,
+        userId : data.user_info.user,
+        username : data.user_info.user_info[0].username,
+        fullName : `${data.user_info.user_info[0].firstName} ${data.user_info.user_info[0].lastName}`,
+        joinDate : data.user_info.createdAt ,
+      };
+      result.push(obj);
+    })
+    res.status(200).json({
+      success: true,
+      message: "Followers fetched successfully",
+      followers: result,
+      areMoreFollowers
+    });
+  } else {
+    res.status(200).json({
+      success : true,
+      message: "Followers fetched successfully",
+      followers: [], // Return an empty array if there are no followers
+      areMoreFollowers
+    });
+  }
+});
 
 /**
  * @UnFollowUser
