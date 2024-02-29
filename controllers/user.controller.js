@@ -524,6 +524,7 @@ export const blockUser = asyncHandler(async function (req, res, next) {
 
     // Set the user's blocked status to true
     user.isBlocked = true;
+    await user.generateJWTToken();
 
     // Save the user
     await user.save();
@@ -845,6 +846,9 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
     if (!user) {
       return next(new AppError("Invalid user id or user does not exist", 400));
     }
+
+    // Checking if the user is blocked
+    if(user.isBlocked) return next(new AppError("This account is blocked by admin", 403));
   
     // Update user fields
     if (username) user.username = username;

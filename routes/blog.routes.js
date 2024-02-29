@@ -1,22 +1,21 @@
 import { Router } from "express";
 import { isLoggedIn } from "../middlewares/auth.middleware.js";
-import { DeletePost, UpdatePost, createBlog, getBlogpost, getHomeBlogs, tagBlog } from "../controllers/blog.controller.js";
+import { DeletePost, PublishBlog, UpdatePost, createBlog, getBlogpost, getHomeBlogs, tagBlog, unPublishBlog } from "../controllers/blog.controller.js";
 import upload from "../middlewares/multer.middleware.js";
 
 const router = Router();
 
 
-router.post("/blog",isLoggedIn, upload.single("postImage"), createBlog);
+router.post("/create",isLoggedIn, upload.single("postImage"), createBlog);
 router.get("/", getHomeBlogs);
-// router.put("/:id", isLoggedIn, UpdatePost);
 router.post("/tag", tagBlog);
-// router.get("/:id", getBlogpost);
-// router.delete("/:id", isLoggedIn, DeletePost);
+router.patch("/publish/:id", isLoggedIn, PublishBlog);
 
 router
     .route("/:id")
         .get(getBlogpost)
-        .put(isLoggedIn, UpdatePost)
+        .put(isLoggedIn, upload.single("postImage"), UpdatePost)
+        .patch(isLoggedIn, unPublishBlog)
         .delete(isLoggedIn, DeletePost);
 
 export default router;
