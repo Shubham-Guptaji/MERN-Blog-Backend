@@ -640,7 +640,7 @@ export const CloseAccount = asyncHandler(async function (req, res, next) {
     // Send the email to the user
     sendEmail(email, subject, message);
 
-    if (req.user.role !== "admin") {
+    if (req.user.role !== "admin" && req.user.username === username) {
         // Clear the token cookie
         res.cookie("token", null, {
             secure: process.env.NODE_ENV === "production" ? true : false,

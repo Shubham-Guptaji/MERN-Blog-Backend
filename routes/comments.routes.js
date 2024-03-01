@@ -5,8 +5,6 @@ import { CreateComment, deleteComment, editComment } from "../controllers/commen
 const router = Router();
 
 router.post('/', isLoggedIn, CreateComment);
-// router.delete('/:commentId', isLoggedIn, deleteComment);
-// router.put('/:commentId',isLoggedIn, editComment);
 router
     .route('/:commentId')
         .delete(isLoggedIn, deleteComment)

@@ -20,6 +20,7 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     // Check if the user is blocked
     const user = await User.findById(req.user.id);
     if (!user) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("User not found", 404));
     }
     if (user.isBlocked) {
@@ -124,7 +125,7 @@ export const unPublishBlog = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
 
     // Checking if user is blocked 
-    const user = User.findById(req.user.id);
+    const user = await User.findById(req.user.id);
     if (!user) {
         return next(new AppError("User not found", 404));
     }
@@ -161,7 +162,7 @@ export const PublishBlog = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
 
     // Checking if user is blocked 
-    const user = User.findById(req.user.id);
+    const user = await User.findById(req.user.id);
     if (!user) {
         return next(new AppError("User not found", 404));
     }
@@ -173,7 +174,7 @@ export const PublishBlog = asyncHandler(async function (req, res, next) {
 
     // Check if the blog post exists and if the user is authorized to unpublish it
     if (!blog || (blog.author.toString() !== req.user.id && req.user.role !== 'admin')) {
-        return next(new AppError(`Not authorized to unpublish this post`, 401));
+        return next(new AppError(`Not authorized to publish this post`, 401));
     }
 
     // Update the blog post's published status
@@ -182,7 +183,7 @@ export const PublishBlog = asyncHandler(async function (req, res, next) {
 
     res.status(200).json({
         success: true,
-        message: 'Blog unpublished successfully',
+        message: 'Blog published successfully',
     });
 });
 
@@ -603,7 +604,7 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
 
     // Delete the post from the database
     await Blog.findByIdAndDelete(id);
-    await Comment.deleteMany({ blog: mongoose.Types.ObjectId.createFromHexString(id) });
+    await Comment.deleteMany({ blog: id });
 
     // Remove the post ID from the user's blogs array
     await User.findByIdAndUpdate(req.user.id, {
