@@ -44,68 +44,78 @@ export const contactformHandler = asyncHandler(async function(req, res, next) {
  * @Route {{URL}}/api/v1/follower/follow
  * @Method post
  * @Access private
- * @ReqData authUsername, blogId
+ * @ReqData authId, blogId
  */
 
 export const followUser = asyncHandler(async function (req, res, next) {
-  const { blogId, authUsername } = req.body;
-  if(!authUsername) {
-    return next(new AppError("Invalid Author", 404))
+  const { blogId, authId } = req.body;
+  if (!authId) {
+    return next(new AppError("Invalid Author", 404));
   }
-
-  //  Check if user is already following the blogger or not
-  const author = await User.findOne({username: authUsername});
-  if(!author) {
-    return next(new AppError("Invalid Author", 404))
-  }
-  let followInfo = await Follower.findOne({author: author._id, user: req.user.id});
-  
-  if(followInfo){
-    return next(new AppError("You have already followed this Blogger.", 409));
-  }
-  let follow;
   try {
-    if(blogId) {
+    // Check if user is already following the blogger or not
+    const [author, user, followInfo] = await Promise.all([
+      User.findById(authId),
+      User.findById(req.user.id),
+      Follower.findOne({ author: authId, user: req.user.id })
+    ]);
+
+    if (!author || author.isClosed || author.isBlocked) {
+      return next(new AppError("Invalid Author", 404));
+    }
+
+    if (!user || user.isClosed || user.isBlocked) {
+      return next(new AppError("Not Authorized to follow", 403));
+    }
+
+    if (followInfo) {
+      return next(new AppError("You have already followed this Blogger.", 409));
+    }
+
+    let follow;
+
+    if (blogId) {
       const blog = await Blog.findById(blogId);
-      if(!blog) {
-        return next(new AppError("Invalid BlogId", 404))
+      if (!blog) {
+        return next(new AppError("Invalid BlogId", 404));
       }
       follow = await Follower.create({
         author: blog.author,
         user: req.user.id,
         blog: blog._id
-      })
+      });
     } else {
-      const author = await User.findOne({username: authUsername});
-      if(!author) {
-        return next(new AppError("Invalid Author", 404))
-      }
       follow = await Follower.create({
-        author: author._id,
+        author: authId,
         user: req.user.id
-      })
+      });
     }
-    if(!follow) {
-      return next(new AppError("Your request couldn't be processed", 500))
+
+    if (!follow) {
+      return next(new AppError("Your request couldn't be processed", 500));
     }
-    const userUpdate = await User.findByIdAndUpdate(follow.author, { $inc: { followers: 1 } });
-    await userUpdate.save();
-    await follow.save();
+
+    // Increment followers count for the followed author directly
+    author.followers += 1;
+    await author.save();
+
     res.status(200).json({
       success: true,
       message: "Followed successfully"
-    })
-  }catch(error) {
-    console.log(error)
-    return next(new AppError("Some Error occurred! Try again later ", 500))
+    });
+  } catch (error) {
+    console.error(error);
+    return next(new AppError("Some Error occurred! Try again later ", 500));
   }
-})
+});
+
+
 
 /**
  * @GetFollowers
  * @Route {{URL}}/api/v1/followers
  * @Method post
- * @Access private(only for authors)
+ * @Access private(only for post authors)
  * @ReqData username, id, skip, limit
  */
 
