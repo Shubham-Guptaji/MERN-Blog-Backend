@@ -31,7 +31,7 @@ This repository contains the backend code for a full-fledged blog website. It pr
 
 2. **Install Dependencies:**
 ```
-  cd blog-website-backend
+  cd MERN-Blog-Backend
   npm install
 ```
 
