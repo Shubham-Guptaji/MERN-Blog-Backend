@@ -51,7 +51,7 @@ This repository contains the backend code for a full-fledged blog website. It pr
 6. **Testing:**
 - Use tools like Postman or write unit tests to ensure the APIs work as expected.
 
-## Contributors
+## Ownership
 - Shubham Gupta
 
 ## License
