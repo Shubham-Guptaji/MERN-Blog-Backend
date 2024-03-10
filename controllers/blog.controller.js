@@ -6,45 +6,50 @@ import User from "../models/user.model.js";
 import AppError from "../utils/appError.js";
 import fs from 'fs/promises';
 import cloudinary from 'cloudinary';
+import Resourcefile from '../models/resources.model.js';
+import Like from '../models/like.model.js';
 
 
 /**
  * @CreatePost
- * @Route {{URL}}/api/v1/blogs/create
+ * @Route {{server}}/blogs/create
  * @Method post
- * @Access private( Logged in users only )
- * @ReqData title, content, tags, seoKeywords, metaDescription
+ * @Access private( Logged in users only ) 
+ * @ReqData authorId, title, content, tags, seoKeywords, metaDescription, resources(ids in array)
  */
 
 export const createBlog = asyncHandler(async function (req, res, next) {
-    // Check if the user is blocked
-    const user = await User.findById(req.user.id);
+
+    const { authorId }  = req.body;
+
+    // Authorization
+    if(req.user.id !== authorId && req.user.role !== "admin"){
+        if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
+        return  next(new AppError('You do not have permission to perform this action', 403));
+    }
+
+    // Check if the user is present
+    const user = await User.findById(authorId);
+
     if (!user) {
         if (req.file) fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("User not found", 404));
     }
-    if (user.isBlocked) {
-        if (req.file) fs.rm(`uploads/${req.file.filename}`);
-        return next(new AppError('You have been blocked by admin', 403));
-    }
 
-    if (!user.isVerified) {
-        if (req.file) fs.rm(`uploads/${req.file.filename}`);
-        return next(new AppError("Account not verified", 403))
-    }
     // Extract required fields from request body
     const { title, content, tags, seoKeywords, metaDescription } = req.body;
 
     // Validate required fields
-    if (!title || !content || !tags || !seoKeywords || !metaDescription) {
-        return next(new AppError("All fields are mandatory", 400));
+    if (!title || !content || !tags || !seoKeywords || !metaDescription || !req.file) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
+        return next(new AppError("All fields are mandatory including post image", 400));
     }
 
     // Create a new blog post
     const newBlog = await Blog.create({
         title,
         content,
-        author: req.user.id,
+        author: authorId,
         isPublished: true,
         seoKeywords,
         metaDescription
@@ -56,54 +61,60 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     try {
         tagslist = JSON.parse(tags);
     } catch (error) {
+        fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError('Invalid JSON format for tags', 400));
     }
 
     if (!Array.isArray(tagslist)) {
+        fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError('Please provide valid tag data (array)', 400));
     }
     newBlog.tags = tagslist;
 
+    
+
     // Handle scenario if new blog post could not be created
     if (!newBlog) {
+        fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("Blog could not be created", 500))
     }
+    
 
     // Add the new blog post to the user's list of blogs
     user.blogs.push(newBlog._id);
 
-    // Handle file upload if present
-    if (req.file) {
-        try {
-            // Upload file to cloud storage
-            const result = await cloudinary.v2.uploader.upload(
-                req.file.path, {
-                folder: `blog/posts/${user.username}`,
-                resource_type: 'image',
-            }
-            )
-            // Update new blog post with uploaded file details
-            if (result) {
-                newBlog.public_image.resource_id = result.public_id;
-                newBlog.public_image.resource_url = result.secure_url;
-            }
-            // Delete temporary file from server
-            fs.rm(`uploads/${req.file.filename}`);
-        } catch (error) {
-            // Handle errors during file upload
-            fs.rm(`uploads/${req.file.filename}`);
-            return next(
-                new AppError(
-                    JSON.stringify(error) || 'File not uploaded, please try again',
-                    400
-                )
-            );
+    // Handle file upload 
+    try {
+        // Upload file to cloud storage
+        const result = await cloudinary.v2.uploader.upload(
+            req.file.path, {
+            folder: `blog/posts/${user.username}`,
+            resource_type: 'image',
         }
+        )
+        // Update new blog post with uploaded file details
+        if (result) {
+            newBlog.public_image.resource_id = result.public_id;
+            newBlog.public_image.resource_url = result.secure_url;
+        }
+        // Delete temporary file from server
+        fs.rm(`uploads/${req.file.filename}`);
+    } catch (error) {
+        // Handle errors during file upload
+        fs.rm(`uploads/${req.file.filename}`);
+        return next(
+            new AppError(
+                JSON.stringify(error) || 'File not uploaded, please try again',
+                400
+            )
+        );
     }
 
     // Save the new blog post and update the user
     await newBlog.save();
     await user.save();
+
+    
 
     // Respond with success message and the new blog post
     res.status(201).json({
@@ -115,7 +126,7 @@ export const createBlog = asyncHandler(async function (req, res, next) {
 
 /**
  * @UnPublishPost
- * @Route {{URL}}/api/v1/blogs/:id
+ * @Route {{server}}/blogs/:id
  * @Method Patch
  * @Access private(author and admin)
  * @ReqData BlogId
@@ -124,14 +135,6 @@ export const createBlog = asyncHandler(async function (req, res, next) {
 export const unPublishBlog = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
 
-    // Checking if user is blocked 
-    const user = await User.findById(req.user.id);
-    if (!user) {
-        return next(new AppError("User not found", 404));
-    }
-    if (user.isBlocked) {
-        return next(new AppError('Your account is blocked by administrator', 403));
-    }
     // Find the blog post
     const blog = await Blog.findById(id);
 
@@ -152,7 +155,7 @@ export const unPublishBlog = asyncHandler(async function (req, res, next) {
 
 /**
 * @PublishPost
-* @Route {{URL}}/api/v1/blogs/publish/:id
+* @Route {{server}}/blogs/publish/:id
 * @Method Patch
 * @Access private(author and admin)
 * @ReqData BlogId
@@ -161,14 +164,6 @@ export const unPublishBlog = asyncHandler(async function (req, res, next) {
 export const PublishBlog = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
 
-    // Checking if user is blocked 
-    const user = await User.findById(req.user.id);
-    if (!user) {
-        return next(new AppError("User not found", 404));
-    }
-    if (user.isBlocked) {
-        return next(new AppError('Your account is blocked by administrator', 403));
-    }
     // Find the blog post
     const blog = await Blog.findById(id);
 
@@ -190,7 +185,7 @@ export const PublishBlog = asyncHandler(async function (req, res, next) {
 
 /**
  * @HomePagePosts
- * @Route {{URL}}/api/v1/blogs/
+ * @Route {{server}}/blogs/
  * @Method get
  * @Access public
  */
@@ -226,20 +221,18 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                 $project: { // Project desired fields and exclude unnecessary data
                     _id: 1,
                     title: 1,
-                    content: 1,
+                    // content: 1,
                     author: {
                         _id: 1,
                         username: 1,
                         firstName: 1,
                         lastName: 1,
-                        bio: 1
+                        // bio: 1
                     },
-                    // createdAt: 1,
                     tags: 1,
                     likes: 1,
-                    comments: 1,
-                    // isPublished: 1,
-                    seoKeywords: 1,
+                    // comments: 1,
+                    // seoKeywords: 1,
                     metaDescription: 1,
                     public_image: 1,
                 },
@@ -248,13 +241,14 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                 $sort: { likes: -1 }, // Sort by likes (descending)
             },
             {
-                $limit: 8, // Limit to 8 documents
+                $limit: 6, // Limit to 6 documents
             },
         ]),
         User.find({ isClosed: false, isBlocked: false }, { _id: 1 })
             .sort({ followers: -1 })
-            .limit(20)
+            .limit(26)
     ]);
+
     // Guard against empty trendingPosts to prevent errors:
     if (!trendingPosts || trendingPosts.length === 0) {
         return res.status(200).json({ success: true, message: "No trending posts found." });
@@ -262,26 +256,31 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
 
     const authorIds = authors.map(author => author._id);
 
-    // Fetching popular author posts from authors who are not closed and not blocked
+    // Fetching popular author posts from authors who are neither closed nor blocked
     const popularAuthorPosts = await Blog.find({ author: { $in: authorIds }, isPublished: true })
-        .limit(20)
+        .select("_id title author tags likes metaDescription public_image")
+        .limit(26);
 
     if (!trendingPosts.length || !popularAuthorPosts.length) {
         return next(new AppError("Some Error Occurred", 500));
     }
 
-    //  Map over the array of trendingposts to get the trending keywords.
+    // Filter author posts that are not in popular posts
+    const authorPosts = popularAuthorPosts.filter(post => !trendingPosts.some(trendingpost => trendingpost._id.equals(post._id)));
+
+    // Map over the array of trending posts to get the trending keywords
     const keywords = trendingPosts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
     const topKeywords = Array.from(new Set(keywords)).slice(0, Math.min(keywords.length, 15));
 
-    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, popularAuthorPosts, topKeywords } });
+    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts,authorPosts: authorPosts.slice(0, 20), topKeywords } });
 });
+
 
 
 
 /**
  * @SearchPost
- * @Route {{URL}}/api/v1/blogs/tag
+ * @Route {{server}}/blogs/tag
  * @Method post
  * @Access public( Logged in users only )
  * @ReqData tagsearch(search keyword)
@@ -290,6 +289,8 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
 export const tagBlog = asyncHandler(async function (req, res, next) {
     //  Get search keyword from req.body
     const { tagsearch } = req.body;
+    const skip = Number(req.body.skip) || 0;
+    const limit = 21;
 
     // Check if tagsearch is provided and is a non-empty string
     if (!tagsearch || typeof tagsearch !== 'string') {
@@ -331,13 +332,19 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
                 ],
             },
         },
+        {
+            $skip: skip
+        },
+        {
+            $limit: limit // Limit to the 21 documents
+        },
         // Preparing response
         {
             $project: {
                 _id: "$_id",
                 title: 1,
                 content: 1,
-                createdAt: 1,
+                // createdAt: 1,
                 author: {
                     _id: 1,
                     username: 1,
@@ -362,19 +369,21 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
     res.status(200).json({
         success: true,
         message: "Searched posts fetched successfully",
+        areMore: posts.length > 20  ? true : false,
         posts,
     });
 });
 
 /**
  * @GetSpecificPost
- * @Route {{URL}}/api/v1/blogs/
+ * @Route {{server}}/blogs/:id
  * @Method get
  * @Access public
  * @ReqData id
  */
 
 export const getBlogpost = asyncHandler(async function (req, res, next) {
+    // Getting Id from the parameter
     const { id } = req.params;
 
     try {
@@ -404,10 +413,11 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
             },
             {
                 $project: {
-                    _id: '$ _id',
+                    _id: 1,
                     title: 1,
                     content: 1,
                     createdAt: 1,
+                    likes: 1,
                     author: {
                         _id: 1,
                         username: 1,
@@ -469,25 +479,37 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
  * @Route {{URL}}/api/v1/blogs/:id
  * @Method put
  * @Access private (only author and admin)
- * @ReqData blogId
+ * @ReqData id, authorId
  */
 
 export const UpdatePost = asyncHandler(async function (req, res, next) {
+    // Getting post id from parameter
     const { id } = req.params;
+    const { authorId }  = req.body;
 
+    // Authorization
+    if(req.user.id !== authorId && req.user.role !== "admin"){
+        if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
+        return  next(new AppError('You do not have permission to perform this action', 403));
+    }
+
+    if(!(req.body.title || req.body.content || req.body.seoKeywords || req.body.metaDescription || req.body.tags || req.file)) {
+        if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
+        return next(new AppError("Atleast one information for updation  is required.", 400));
+    }
     // Find the blog post by ID
     const blog = await Blog.findById(id);
     if (!blog) return next(new AppError('Blog post not found', 404));
 
     // Find the user and check if the account is active
-    const user = await User.findOne({ _id: req.user.id, isClosed: false, isBlocked: false });
+    const user = await User.findOne({ _id: authorId, isClosed: false, isBlocked: false });
     if (!user) {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
         return next(new AppError('User account is closed or blocked', 403));
     }
 
     // Check if the logged-in user is the author of the blog post
-    if (blog.author.toString() !== req.user.id) {
+    if (blog.author.toString() !== authorId) {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
         return next(new AppError('Not authorized', 400));
     }
@@ -544,71 +566,43 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
 
 /**
  * @DeletePost
- * @Route {{URL}}/api/v1/blogs/:id
+ * @Route {{server}}/blogs/:id
  * @Method delete
  * @Access private (only author and admin)
- * @ReqData blogId
+ * @ReqData id, authorId
  */
 
 export const DeletePost = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
+    const { authorId }  = req.body;
 
-    // Use aggregation to fetch post details and author information in a single query
-    const post = await Blog.aggregate([
-        {
-            $match: { "_id": mongoose.Types.ObjectId.createFromHexString(id) }
-        },
-        {
-            $lookup: {
-                from: 'users',
-                localField: 'author',
-                foreignField: '_id',
-                as: 'author',
-            },
-        },
-        { $unwind: '$author' }, // Unwind the author array for filtering
-        {
-            $match: {
-                $and: [
-                    { 'author._id': mongoose.Types.ObjectId.createFromHexString(req.user.id) },
-                    { 'author.isClosed': { $ne: true } }, // Filter out closed authors
-                    { 'author.isBlocked': { $ne: true } }, // Filter out blocked authors
-                ],
-            },
-        },
-        {
-            $project: {
-                _id: 1,
-                author: {
-                    _id: 1,
-                    username: 1
-                },
-                title: 1,
-                public_image: 1
-            }
-        }
-    ]);
+    if(req.user.id !== authorId && req.user.role !== "admin"){
+        return  next(new AppError('You do not have permission to perform this action', 403));
+    }
+
+    const post = await Blog.findOne({_id: id, author: authorId})
 
     // Check if the post exists
-    if (!post[0]) return next(new AppError("Post not found", 404));
+    if (!post) return next(new AppError("Your Post not found", 404));
 
     try {
         // Remove the resources and files related to the post from cloudinary
-        if (post[0].public_image.resource_id) {
-            await cloudinary.v2.uploader.destroy(post[0].public_image.resource_id);
+        if (post.public_image.resource_id) {
+            await cloudinary.v2.uploader.destroy(post.public_image.resource_id);
         }
     } catch (error) {
-        console.log(error);
         return next(new AppError("Error deleting post resources", 500));
     }
 
     // Delete the post from the database
     await Blog.findByIdAndDelete(id);
     await Comment.deleteMany({ blog: id });
+    await Like.deleteMany({ blog: id});
+    await Resourcefile.deleteMany({ blog: id });
 
     // Remove the post ID from the user's blogs array
     await User.findByIdAndUpdate(req.user.id, {
-        $pull: { blogs: post[0]._id }
+        $pull: { blogs: post._id }
     }).exec();
 
     // Respond with success message and post details
@@ -617,6 +611,89 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
         message: 'Post deleted successfully'
     });
 });
+
+/**
+ * @AllPosts
+ * @Route {{server}}/blogs/posts?skip=0&limit=10
+ * @Method get
+ * @Access public
+ * @ReqData skip 
+ */
+
+export const AllPosts = asyncHandler(async function(req, res, next) {
+    try {
+        // Extract skip and limit values from request or set default values
+        const skip = Number(req.query.skip) || 0;
+        const limit = 21;
+
+        // Fetch all published blog posts with author information
+        const posts = await Blog.aggregate([
+            {
+                $match: { isPublished: true } // Filter published posts
+            },
+            {
+                $lookup: { // Lookup author information
+                    from: 'users',
+                    localField: 'author',
+                    foreignField: '_id',
+                    as: 'author'
+                }
+            },
+            {
+                $unwind: '$author' // Unwind the author array for filtering
+            },
+            {
+                $match: { // Filter based on author status
+                    $and: [
+                        { 'author.isClosed': { $ne: true } }, // Filter out closed authors
+                        { 'author.isBlocked': { $ne: true } } // Filter out blocked authors
+                    ]
+                }
+            },
+            {
+                $skip: skip // Skip records based on skip value
+            },
+            {
+                $limit: limit // Limit records based on limit value
+            },
+            {
+                $project: { // Project desired fields and exclude unnecessary data
+                    _id: 1,
+                    title: 1,
+                    // content: 1,
+                    // createdAt: 1,
+                    likes: 1,
+                    author: {
+                        _id: 1,
+                        username: 1,
+                        firstName: 1,
+                        lastName: 1,
+                        avatar: 1
+                        // bio: 1
+                    },
+                    seoKeywords: 1,
+                    metaDescription: 1,
+                    public_image: 1,
+                    tags: 1
+                }
+            }
+        ]);
+
+        // Send the response with fetched posts
+        res.status(200).json({
+            success: true,
+            message: "All posts fetched successfully",
+            areMore: posts.length > 20 ?  true : false,
+            posts : posts.slice(0,20)
+        });
+    } catch (error) {
+        // Handle errors
+        console.error("Error fetching posts:", error);
+        return next(new AppError("An error occurred while fetching posts", 500));
+    }
+});
+
+
 
 
 

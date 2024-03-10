@@ -3,36 +3,45 @@ import jwt from 'jsonwebtoken';
 import AppError from "../utils/appError.js";
 import asyncHandler from './async.middleware.js';
 
-export const isLoggedIn = asyncHandler(async (req, res, next) => {
+
+// Check if user is logged in
+export const isLoggedIn = asyncHandler(async (req, _, next) => {
     try{
-        const token = req.cookies?.token || req.header("Authorization")?.replace("Bearer ","");
+        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ","");
         if(!token) {
-            return next(new AppError("Unauthorized request", 401));
+            return next(new AppError("Token not found", 401));
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
         if(!decoded) {
-            return next(new AppError("Unauthorized request", 401));
+            return next(new AppError("Invalid token", 401));
         }
 
         req.user = decoded;
 
+        if(req.user.isClosed) {
+            return next(new AppError("This account is closed. Please Login again to open the account", 403))
+        }
+        if(req.user.isBlocked) {
+            return next(new AppError("This account has been blocked", 403))
+        }
+
         next();
     } catch (err){
-        console.log("An error occurred while authenticating!",err);
-        return next(new AppError("Something went wrong!", 500))
+        return next(new AppError("Invalid Token", 400))
     }
 })
 
-export const authorizeRoles = (...roles) => {
-    asyncHandler(async (req, _res, next) => {
-        if(!roles.includes(req.user.role)) {
-            return next(
-                new AppError("You don't have permission to view this route", 403)
-            );
-        }
-        next();
-    })
-}
+// Check if user is verified
+export const isVerified = asyncHandler(async function(req, _, next) {
+    if(req.user.isVerified) return next();
+    next(new AppError("This account is not verified. Please verify your account", 403));
+})
+
+// Check if user is admin
+export const isAdmin = asyncHandler(async function(req, _, next) {
+    if(req.user.role === "admin") return next();
+    next(new AppError("Your request can not be processed", 403));
+})
 

@@ -3,82 +3,159 @@ import asyncHandler from "../middlewares/async.middleware.js";
 import Blog from "../models/blog.model.js";
 import Follower from "../models/follower.model.js";
 import Like from "../models/like.model.js";
+import ContactForm from "../models/contact.model.js";
 import User from "../models/user.model.js";
 import AppError from "../utils/appError.js";
+import sendEmail from "../utils/emailHandler.js";
 
 /**
  * @ContactForm
- * @Route {{URL}}/api/v1/contact
+ * @Route {{server}}/contact
  * @Method post
  * @Access public
  * @ReqData name, email, subject, message
  */
 
-export const contactformHandler = asyncHandler(async function(req, res, next) {
-    try {
-        const { name, email, subject, message } = req.body;
+export const contactformHandler = asyncHandler(async function (req, res, next) {
 
-        if(!name || !email || !subject || !message) {
-            return next(new AppError("All fields are mandatory", 400))
-        }
+  try {
+    // Extract form data from the request body
+    const { name, email, subject, message } = req.body;
+    // Check if all fields are present
+    if (!name || !email || !subject || !message) {
+      // Return an error if any field is missing
+      return next(new AppError("All fields are mandatory", 400));
+    }
 
-        const newContact = await ContactForm.create({
-          name,
-          email,
-          subject,
-          message
-        });
+    // Create a new contact form entry with the provided data
+    const newContact = await ContactForm.create({
+      name,
+      email,
+      subject,
+      message
+    });
+
+    // Save the new entry to the database
+    await newContact.save();
+    const newMessage = `
+      <h2>New Message Received</h2>
+      <p><b>Name: </b>${newContact.name}</p>
+      <p><b>Email: </b><a href="mailto:${newContact.email}">${newContact.email}</a></p>
+      <p><b>Subject: </b>${newContact.subject}<br/><i>${newContact.message}</i></p>
+    `
+    sendEmail(process.env.CONTACT_US_EMAIL, subject, newMessage)
+
+    // Send a success response
+    res.status(200).json({ success: true, message: 'Form submitted successfully!' });
+
+  } catch (error) {
+    // Return a server error response in case of any
+    return next(new AppError("Some Error occurred! Try again later", 500))
+  }
+});
+
+/**
+ * @AllContacts
+ * @Route {{server}}/contact
+ * @Method GET
+ * @Access private(admin only)
+ * @ReqData skip
+ */
+
+export const AllContacts = asyncHandler(async function (req, res, next) {
+  // Get the skip from query;
+  const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+  const limit = 21;
+
+  // Finding contact from database
+  const contacts = await ContactForm.find().sort({ createdAt: -1 }).skip(skip).limit(limit);
+
+  // If no contacts found
+  if (!contacts || !contacts.length) { contacts = [] }
+
+  // Sending response
+  res
+  .status(200)
+  .json({ 
+    success: true, 
+    message: "Contacts fetched successfully", 
+    data: contacts, 
+    areMore: contacts.length > 20 ? true : false 
+  });
+})
+
+/**
+ * @DeleteContacts
+ * @Route {{server}}/contact/:id
+ * @Method Delete
+ * @Access private(admin only)
+ * @ReqData id
+ */
+
+export const DeleteContact = asyncHandler(async function (req, res, next) {
+  try {
+    // Get id from parameter
+    const id = req.params.id;
+    // Find contact by ID and delete it
+    let contact = await ContactForm.findByIdAndDelete(id);
     
-        await newContact.save();
-
-        res.status(200).json({ success: true, message: 'Form submitted successfully!' });
-    
-      } catch (error) {
-        console.error('Error submitting contact form:', error);
-        return next(new AppError("Some Error occurred! Try again later", 500))
-      }
+    // Checking if there is a contact with that ID or not
+    if (!contact) return next(new AppError("No contact with this ID found.", 404));
+  
+    // Send Response
+    res.status(200).json({  
+      success: true,  
+      message: `Deleted contact ${contact._id}`,  
+    });
+  } catch (error) {
+    next(new AppError("Contact Id is incorrect", 404));
+  }
 })
 
 /**
  * @FollowUser
- * @Route {{URL}}/api/v1/follower/follow
+ * @Route {{server}}/follower/follow
  * @Method post
- * @Access private
+ * @Access private(logged in users)
  * @ReqData authId, blogId
  */
 
 export const followUser = asyncHandler(async function (req, res, next) {
   const { blogId, authId } = req.body;
+
+  // Check if author Id is present in the request body
   if (!authId) {
-    return next(new AppError("Invalid Author", 404));
+    return next(new AppError("Author Id is required.", 404));
   }
+
   try {
     // Check if user is already following the blogger or not
-    const [author, user, followInfo] = await Promise.all([
+    const [author, followInfo] = await Promise.all([
       User.findById(authId),
-      User.findById(req.user.id),
       Follower.findOne({ author: authId, user: req.user.id })
     ]);
 
+    // Check if author exists and is not closed or blocked
     if (!author || author.isClosed || author.isBlocked) {
       return next(new AppError("Invalid Author", 404));
     }
 
-    if (!user || user.isClosed || user.isBlocked) {
-      return next(new AppError("Not Authorized to follow", 403));
-    }
-
+    // Check if user is already following the author or not
     if (followInfo) {
-      return next(new AppError("You have already followed this Blogger.", 409));
+      return next(new AppError("You have already following this Blogger.", 409));
     }
 
     let follow;
 
+    // Create a new follower document with the provided data
     if (blogId) {
-      const blog = await Blog.findById(blogId);
+      const blog = await Blog.findOne({ _id: blogId, author: authId, isPublished: true });
+
+      // Check if blog exists
       if (!blog) {
         return next(new AppError("Invalid BlogId", 404));
       }
+
       follow = await Follower.create({
         author: blog.author,
         user: req.user.id,
@@ -91,6 +168,7 @@ export const followUser = asyncHandler(async function (req, res, next) {
       });
     }
 
+    // Check if follow document was created successfully
     if (!follow) {
       return next(new AppError("Your request couldn't be processed", 500));
     }
@@ -99,153 +177,286 @@ export const followUser = asyncHandler(async function (req, res, next) {
     author.followers += 1;
     await author.save();
 
+    // Send a success response
     res.status(200).json({
       success: true,
       message: "Followed successfully"
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('Error following user:', error);
     return next(new AppError("Some Error occurred! Try again later ", 500));
   }
 });
 
-
-
 /**
  * @GetFollowers
- * @Route {{URL}}/api/v1/followers
- * @Method post
+ * @Route {{server}}/followers
+ * @Method get
  * @Access private(only for post authors)
- * @ReqData username, id, skip, limit
+ * @ReqData skip
  */
 
 export const userFollowers = asyncHandler(async function (req, res, next) {
-  const { id, username } = req.user;
-  const skip = req.body.skip || 0;
-  const limit = (req.body.limit || 10) + 1;
-  let newId = mongoose.Types.ObjectId.createFromHexString(id);
+  // Get the skip from parameters
+  const skip = Number(req.query.skip) || 0;
+  const limit = 21;
+  const newId = mongoose.Types.ObjectId.createFromHexString(req.user.id);
+
+  // Fetch followers for the author and process data in the pipeline
   const getFollowers = await Follower.aggregate([
-    { $match : { author : newId }},
-    { $lookup : {
-      from : 'users',
-      localField : 'user',
-      foreignField : '_id',
-      as : 'user_info'
-    }},
-    
     {
-      $facet: {
-        user_info: [
-          { $skip: skip },
-          { $limit: limit }
-        ]
+      $match: { author: newId }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'user',
+        foreignField: '_id',
+        as: 'user_info'
       }
     },
-    { $unwind: '$user_info' }, // Deconstruct the array of follower documents
+    {
+      $unwind: '$user_info'
+    },
+    {
+      $match: {
+        "user_info.isClosed": false,
+        "user_info.isBlocked": false,
+      },
+    },
     {
       $project: {
-        user_info : 1,
-        blog: 1
+        blogId: '$blog',
+        userId: '$user_info._id',
+        username: '$user_info.username',
+        fullName: { $concat: ['$user_info.firstName', ' ', '$user_info.lastName'] },
+        joinDate: '$user_info.createdAt'
       }
+    },
+    {
+      $skip: skip
+    },
+    {
+      $limit: limit
     }
   ]);
+
   let areMoreFollowers = false;
-  // Check if user_info array exists before accessing it
-  if (getFollowers) {
-    let result = [];
-    if(getFollowers.length === 11) areMoreFollowers = true;
-    let followerData = getFollowers.length === 11 ? getFollowers.slice(0,11) : getFollowers;
-    (followerData).map((data) => {
-      let obj = { 
-        blogId : data.user_info.blog,
-        userId : data.user_info.user,
-        username : data.user_info.user_info[0].username,
-        fullName : `${data.user_info.user_info[0].firstName} ${data.user_info.user_info[0].lastName}`,
-        joinDate : data.user_info.createdAt ,
-      };
-      result.push(obj);
-    })
-    res.status(200).json({
-      success: true,
-      message: "Followers fetched successfully",
-      followers: result,
-      areMoreFollowers
-    });
-  } else {
-    res.status(200).json({
-      success : true,
-      message: "Followers fetched successfully",
-      followers: [], // Return an empty array if there are no followers
-      areMoreFollowers
+  let result = [];
+
+  // Process the fetched followers data
+  if (getFollowers && getFollowers.length > 0) {
+    if (getFollowers.length === 21) areMoreFollowers = true;
+
+    getFollowers.forEach(data => {
+      result.push(data);
     });
   }
+
+  // Sending the response
+  res.status(200).json({
+    success: true,
+    message: "Followers fetched successfully",
+    followers: result,
+    areMoreFollowers
+  });
+});
+
+
+/**
+ * @UserFollowing
+ * @Route {{server}}/following
+ * @Method get
+ * @Access private(logged in users only)
+ * @ReqData skip
+ */
+
+export const UserFollowing = asyncHandler(async function (req, res, next) {
+  const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+  const limit = 21; // Limiting to 21 authors as requested
+
+  // Fetch authors for the user
+  const Authors = await Follower.aggregate([
+    /**
+     * Match the Follower documents where the user field matches the logged-in user's id
+     */
+    { $match: { user: mongoose.Types.ObjectId.createFromHexString(req.user.id) } }, // Convert user id to ObjectId
+
+    /**
+     * Look up the author's user document and join it with the Follower document
+     */
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'author',
+        foreignField: '_id',
+        as: 'author',
+      },
+    },
+
+    /**
+     * Unwind the author array so we can access the user document directly
+     */
+    { $unwind: "$author" },
+
+    /**
+     * Match only authors who are not closed or blocked
+     */
+    {
+      $match: {
+        "author.isClosed": false,
+        "author.isBlocked": false,
+      },
+    },
+
+    /**
+     * Skip the number of documents based on the 'skip' parameter
+     */
+    { $skip: skip },
+
+    /**
+     * Limit the number of documents to 21
+     */
+    { $limit: limit },
+
+    /**
+     * Project only the required fields
+     */
+    {
+      $project: {
+        _id: 1,
+        author: {
+          _id: 1,
+          username: 1,
+          firstName: 1,
+          lastName: 1,
+        },
+      },
+    },
+
+    /**
+     * Group the documents by the Follower document's id and push the unwound author documents into an array
+     */
+    {
+      $group: {
+        _id: "$_id",
+        author: { $push: "$author" },
+      },
+    },
+
+    /**
+     * Project only the required fields
+     */
+    {
+      $project: {
+        _id: 1,
+        author: 1,
+      },
+    },
+  ]);
+
+  if (!Authors || !Authors.length) {
+    return res.status(200).json({
+      success: true,
+      message: "You are not following anyone yet",
+      authors: [],
+      areMore: false,
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Authors you are following",
+    authors: Authors,
+    areMore: Authors.length > 20 ? true : false,
+  });
 });
 
 /**
  * @UnFollowUser
- * @Route {{URL}}/api/v1/follower/unfollow
+ * @Route {{server}}/follower/unfollow/:FollowId
  * @Method delete
  * @Access private(logged in users only)
- * @ReqData commentId, 
+ * @ReqData FollowId, 
  */
 
 export const unfollowUser = asyncHandler(async function (req, res, next) {
-  const {FollowId} = req.params;
-  if(!FollowId) {
-    return next(new AppError("Follow Id is required.", 400))
+  // Extract the FollowId from the request parameters
+  const { FollowId } = req.params;
+
+  // Check if FollowId is provided
+  if (!FollowId) {
+    return next(new AppError("Follow Id is required.", 400));
   }
+
+  // Find the follower by its Id
   const follow = await Follower.findById(FollowId);
-  if(!follow) {
-    return next(new AppError("Wrong Follower Id", 400))
+
+  // Check if a follower document was found
+  if (!follow) {
+    return next(new AppError("Wrong Follower Id", 400));
   }
-  if(follow.user.toString() !== req.user.id) {
-    return next(new AppError("Not authorized", 401))
+
+  // Ensure that the logged-in user is the owner of the follow document
+  if (follow.user.toString() !== req.user.id) {
+    return next(new AppError("Not authorized", 401));
   }
-  const result = await Follower.findByIdAndDelete(FollowId)
-  if(!result) {
-    return next(new AppError("Please try again later...", 500))
+
+  // Delete the follower document
+  const result = await Follower.findByIdAndDelete(FollowId);
+
+  // Check if the follower document was successfully deleted
+  if (!result) {
+    return next(new AppError("Please try again later...", 500));
   }
+
+  // Decrement the followers count for the author
   const userUpdate = await User.findByIdAndUpdate(follow.author, { $inc: { followers: -1 } });
   await userUpdate.save();
 
+  // Return the success response
   res.status(200).json({
     success: true,
-    message: "Unfollowed Successfully"
-  })
-})
+    message: "Unfollowed Successfully",
+  });
+});
 
 /**
  * @LikePost
  * @Route  {{URL}}/api/v1/like/:postId
- * @Method post
+ * @Method get
  * @Access private (logged in users)
  * @ReqData postId
  */
 
-export const LikePost = asyncHandler(async function(req, res, next) {
-  const  {postId} = req.params;
-  
+export const LikePost = asyncHandler(async function (req, res, next) {
+  // Extract the postId from the request parameters
+  const { postId } = req.params;
+
   // Check if the user already liked this post
-  let likeinfo = await Like.findOne({blog : postId, user: req.user.id});
-  if(likeinfo) {
+  let likeinfo = await Like.findOne({ blog: postId, user: req.user.id });
+  if (likeinfo) {
+    // If the user already liked the post, return an error
     return next(new AppError('You have already Liked this Post', 400));
   }
 
-  // Create a new like
-  likeinfo = await Like.create({ blog: postId, user: req.user.id });
-
   // Increment the likes count of the Blog by 1
-  const blog = await Blog.findByIdAndUpdate(postId, { $inc:{likes: 1} },{new:true});
+  const blog = await Blog.findByIdAndUpdate(postId, { $inc: { likes: 1 } }, { new: true });
 
-  if(!blog) {
+  if (!blog) {
+    // If the blog is not found, return an error
     return next(new AppError('Blog not found!', 404));
   }
 
+  // Create a new like
+  likeinfo = await Like.create({ blog: postId, user: req.user.id, author: blog.author });
+
   // Send response
   res.status(200).json({
-    success:true,
+    success: true,
     message: "Liked the post",
-    data:likeinfo
+    data: likeinfo
   })
 })
 
@@ -257,22 +468,29 @@ export const LikePost = asyncHandler(async function(req, res, next) {
  * @ReqData postId
  */
 
-export const DisLikePost = asyncHandler(async function (req, res, next) {
-  const {postId} = req.params;
+export const UnLikePost = asyncHandler(async function (req, res, next) {
+  // Extract the postId from the request parameters
+  const { postId } = req.params;
 
   // Get the information about the current user's like on this post
-  let likeInfo = await Like.findOneAndDelete({blog:postId , user:req.user.id});
+  let likeInfo = await Like.findOneAndDelete({ blog: postId, user: req.user.id });
 
-  if (!likeInfo){
-    return next(new AppError("You haven't liked this post yet", 400))
+  // If the user hasn't liked this post yet, return an error
+  if (!likeInfo) {
+    return next(new AppError("You haven't liked this post yet", 400));
   }
 
   // Decrement the number of likes for the blog
-  await Blog.findByIdAndUpdate(postId, { $inc : { likes : -1 } }).catch((err)=>{console.log(err)});
-  
+  await Blog.findByIdAndUpdate(postId, { $inc: { likes: -1 } }).catch((err) => {
+    console.log(err);
+  });
+
+  // Delete the like information from the database
+  await Like.findByIdAndDelete(likeInfo._id);
+
   // Return the updated info to the client side
   res.status(200).json({
-      status:'success',
-      data:likeInfo
+    status: true,
+    message: "Unliked the post"
   });
-})
+});

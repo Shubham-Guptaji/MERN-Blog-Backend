@@ -1,7 +1,7 @@
 import { Schema, model } from 'mongoose';
 
 const contactFormSchema = new Schema({
-  name: {
+  name: { 
     type: String,
     trim: true,
     required: [true, "Name is required"]

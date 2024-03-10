@@ -6,7 +6,7 @@ import AppError from "../utils/appError.js";
 
 /** 
  * @Comments
- * @Route {{URL}}/api/v1/comments
+ * @Route {{server}}/comments
  * @Method post
  * @Access private(only logged in users)
  * @ReqData comment, blogId 
@@ -20,27 +20,28 @@ export const CreateComment = asyncHandler(async function (req, res, next) {
         return next(new AppError("Comment and BlogId is required", 400));
     }
 
-    // Find the user associated with the request
-    const user = await User.findById(req.user.id);
-
-    // Checking user status
-    if (!user || !user.isVerified || user.isClosed || user.isBlocked) {
-        return next(new AppError('Not authorized to comment.', 403));
-    }
-
     // Find the blog to which the comment will be added
-    const commentToBlog = await Blog.findById(blogId);
+    const commentToBlog = await Blog.findOne({_id: blogId, isPublished: true});
 
     // Check if the blog exists
     if (!commentToBlog) {
         return next(new AppError("BlogId is invalid", 404))
     }
 
+    // Find the user associated with the request
+    const user = await User.findById(commentToBlog.author);
+
+    // Checking user status
+    if (!user || !user.isVerified || user.isClosed || user.isBlocked) {
+        return next(new AppError('User not found', 404));
+    }
+
     // Create the comment
     const mycomment = await Comment.create({
         content: comment,
         author: req.user.id,
-        blog: blogId
+        blog: blogId,
+        blogAuthor: commentToBlog.author
     });
 
     // Check if the comment was created successfully
@@ -65,7 +66,7 @@ export const CreateComment = asyncHandler(async function (req, res, next) {
 
 /** 
  * @UpdateComments
- * @Route {{URL}}/api/v1/comments/
+ * @Route {{server}}/comments/:commentId
  * @Method put
  * @Access private(only logged in authorized user)
  * @ReqData commentId, comment
@@ -84,16 +85,16 @@ export const editComment = asyncHandler(async function (req, res, next) {
     const commentData = await Comment.findById(commentId);
 
     // Check if comment exists and if the user is the owner of the comment
-    if (!commentData || req.user.id !== commentData.author.toString()) {
-        return next(new AppError("Not Authorized", 403))
+    if (!commentData || (req.user.id !== commentData.author.toString() && req.user.role !== "admin")) {
+        return next(new AppError("Your comment not found", 403))
     }
 
     // Find the user associated with the request
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(commentData.blogAuthor);
 
     // Checking user status
     if (!user || !user.isVerified || user.isClosed || user.isBlocked) {
-        return next(new AppError('Not authorized to update comment.', 403));
+        return next(new AppError('Comment not found', 404));
     }
 
     // Update the comment directly using commentData
@@ -110,7 +111,7 @@ export const editComment = asyncHandler(async function (req, res, next) {
 
 /** 
  * @DeleteComment
- * @Route {{URL}}/api/v1/comments/:commentId
+ * @Route {{server}}/comments/:commentId
  * @Method delete
  * @Access private(only logged in authorized user)
  * @ReqData commentId
@@ -122,21 +123,14 @@ export const deleteComment = async (req, res, next) => {
 
         // Find the comment and check if it exists
         const comment = await Comment.findById(commentId);
+
         if (!comment) {
             return next(new AppError('Comment not found', 404));
         }
 
         // Check if the user is authorized to delete the comment
-        if (comment.author.toString() !== req.user.id) {
+        if (comment.author.toString() !== req.user.id && req.user.id !== "admin") {
             return next(new AppError('You are not authorized to delete this comment', 403));
-        }
-
-        // Find the user associated with the request
-        const user = await User.findById(req.user.id);
-
-        // Checking user status
-        if (!user || !user.isVerified || user.isClosed || user.isBlocked) {
-            return next(new AppError('Not authorized to delete comment.', 403));
         }
 
         // Delete the comment and remove its reference from the associated blog

@@ -1,11 +1,14 @@
 import { Router } from "express";
-import { isLoggedIn } from "../middlewares/auth.middleware.js";
+import { isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
 import upload from "../middlewares/multer.middleware.js";
-import { AddResource, DeleteResource } from "../controllers/resource.controller.js";
+import { AddResource, BlogResource, DeleteResource, GetResources } from "../controllers/resource.controller.js";
+import rate from "../utils/requestLimit.js";
 
 const router = Router();
 
-router.post("/" ,isLoggedIn, upload.single('resource'), AddResource);
-router.delete("/:id", isLoggedIn, DeleteResource);
+router.post("/" , rate(15*60*1000, 20), isLoggedIn, isVerified, upload.single('resource'), AddResource);
+router.post("/blog/:id", rate(5*60*1000, 8), isLoggedIn, BlogResource);
+router.get("/blog/:id/author/:authorId", rate(15*60*1000, 15), isLoggedIn, GetResources);
+router.delete("/:id", rate(15*60*1000, 30), isLoggedIn, DeleteResource);
 
 export default router;

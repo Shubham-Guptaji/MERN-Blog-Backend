@@ -5,17 +5,49 @@ import sendEmail from "../utils/emailHandler.js";
 import cloudinary from "cloudinary";
 import fs from "fs/promises";
 import asyncHandler from "../middlewares/async.middleware.js";
-import crypto, { verify } from "crypto";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import Like from "../models/like.model.js";
+import Follower from "../models/follower.model.js";
+import Blog from "../models/blog.model.js";
+import Comment from "../models/comment.model.js";
+import Resourcefile from "../models/resources.model.js";
 
-const cookieOptions = {
+const CookieOptions = {
     secure: process.env.NODE_ENV === "production" ? true : false,
-    maxAge: 2 * 24 * 60 * 60 * 1000,
     httpOnly: true,
 };
 
+// Token generator function for controllers
+
+const generateAccessAndRefreshTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+
+        if (user.isClosed) {
+            throw new AppError("This account is closed. Please Login again to reopen the account", 403)
+        }
+        if (user.isBlocked) {
+            throw new AppError("This account has been blocked", 403)
+        }
+
+        const accessToken = await user.generateAccessToken();
+        const refreshToken = await user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+        await user.save();
+
+        return { accessToken, refreshToken };
+    } catch (error) {
+        throw new AppError(error?.message || "Something went wront while generating tokens", error?.status || 500);
+    }
+}
+
+
+
 /**
  * @CreateUser
- * @Route {{URL}}/api/v1/user/register
+ * @Route {{server}}/user/register
  * @Method post
  * @Access public
  * @ReqData username, email, firstName, lastName, password
@@ -26,101 +58,125 @@ export const registerUser = asyncHandler(async function (req, res, next) {
 
     // Check if all the required fields are provided
     if (!username || !email || !firstName || !lastName || !password) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("All fields are mandatory.", 400));
     }
 
+    // Regular expression to match password criteria
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()_+={}\[\]:;<>?,./\\-]).{8,}$/;
+
+    // Test if the password matches the criteria
+    if (!passwordRegex.test(password)) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
+        return next(new AppError('Password should contain atleast 8 characters, small letters, capital letters and symbols', 400));
+    }
+
     // Check if a user with the provided email already exists
-    const userExist = await User.findOne({ email });
+    const userExist = await User.findOne({
+        $or: [
+            { username: username },
+            { email: email }
+        ]
+    });
+
     if (userExist) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("User Already registered.", 409));
     }
 
-    // Create a new user with the provided details
-    const user = await User.create({
-        username,
-        email,
-        password,
-        firstName,
-        lastName,
-        avatar: {
-            public_id: email,
-            secure_url:
-                "https://res.cloudinary.com/du9jzqlpt/image/upload/v1674647316/avatar_drzgxv.jpg",
-        },
-    });
+    try {
+        // Create a new user with the provided details
+        const user = await User.create({
+            username,
+            email,
+            password,
+            firstName,
+            lastName,
+            avatar: {
+                public_id: email,
+                secure_url:
+                    "https://res.cloudinary.com/du9jzqlpt/image/upload/v1674647316/avatar_drzgxv.jpg",
+            },
+        });
 
-    // If a file is uploaded, upload it to cloudinary and update the user's avatar
-    if (req.file) {
-        try {
-            const result = await cloudinary.v2.uploader.upload(req.file.path, {
-                folder: "blog/user/avatar",
-                resource_type: "image",
-                width: 350,
-                height: 350,
-                gravity: "faces",
-                crop: "fill",
-            });
-            if (result) {
-                user.avatar.public_id = result.public_id;
-                user.avatar.secure_url = result.secure_url;
+        // If a file is uploaded, upload it to cloudinary and update the user's avatar
+        if (req.file) {
+            try {
+                const result = await cloudinary.v2.uploader.upload(req.file.path, {
+                    folder: "blog/user/avatar",
+                    resource_type: "image",
+                    width: 350,
+                    height: 350,
+                    gravity: "faces",
+                    crop: "fill",
+                });
+                if (result) {
+                    user.avatar.public_id = result.public_id;
+                    user.avatar.secure_url = result.secure_url;
+                }
+                fs.rm(`uploads/${req.file.filename}`);
+            } catch (error) {
+                for (const file of await fs.readdir("uploads/")) {
+                    if (file == ".gitkeep") continue;
+                    await fs.unlink(path.join("uploads/", file));
+                }
+                return next(
+                    new AppError(
+                        JSON.stringify(error) || "File not uploaded, please try again",
+                        400
+                    )
+                );
             }
-            fs.rm(`uploads/${req.file.filename}`);
-        } catch (error) {
-            console.log("not uploaded");
-            for (const file of await fs.readdir("uploads/")) {
-                if (file == ".gitkeep") continue;
-                await fs.unlink(path.join("uploads/", file));
-            }
-            return next(
-                new AppError(
-                    JSON.stringify(error) || "File not uploaded, please try again",
-                    400
-                )
-            );
         }
+
+        // Save the updated user to the database
+        await user.save();
+
+        // Define the email subject and message
+        const subject = `Welcome to Alcodemy Blog`;
+        const message = `<h2>Alcodemy Blog</h2><p>Hi ${user.firstName}, <br> Thanks for joining our team of Great Bloggers.</p>`;
+        const userEmail = user.email;
+        // Send the email to the user
+        sendEmail(userEmail, subject, message);
+
+        // Generate a token for the logged-in user
+        const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
+
+        // Send a success response with the user's details
+        res
+            .status(201)
+            .cookie("accessToken", accessToken, CookieOptions)
+            .cookie("refreshToken", refreshToken, CookieOptions)
+            .json({
+                success: true,
+                message: "User created Successfully",
+                user: {
+                    username: user.username,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    bio: user.bio,
+                    avatar: user.avatar,
+                    role: user.role,
+                    tokens: { accessToken, refreshToken }
+                }
+            });
+    } catch (error) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
+        return next(new AppError(error.message, 400));
     }
-
-    // Save the updated user to the database
-    await user.save();
-
-    // Define the email subject and message
-    const subject = `Welcome to Alcodemy Blog`;
-    const message = `<h2>Alcodemy Blog</h2><p>Hi ${user.firstName}, <br> Thanks for joining our team of Great Bloggers.</p>`;
-    const userEmail = user.email;
-    // Send the email to the user
-    sendEmail(userEmail, subject, message);
-
-    // Generate a JWT token for the user
-    const token = await user.generateJWTToken();
-
-    // Set the JWT token as a cookie in the response
-    res.cookie("token", token, cookieOptions);
-
-    // Send a success response with the user's details
-    res.status(201).json({
-        success: true,
-        message: "User created Successfully",
-        user: {
-            username: user.username,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            bio: user.bio,
-            avatar: user.avatar,
-            role: user.role,
-        },
-    });
 });
 
 /**
  * @LoginUser
- * @Route {{URL}}/api/v1/user/login
+ * @Route {{server}}/user/login
  * @Method post
  * @Access public
  * @ReqData username, password
  */
 
 export const loginUser = asyncHandler(async function (req, res, next) {
+    // Destructure the request body to get the login details
     const { username, password } = req.body;
 
     // Checking if the username and password exist
@@ -129,13 +185,11 @@ export const loginUser = asyncHandler(async function (req, res, next) {
     }
 
     // Finding the User in Database by username and if found then compare password
-    const user = await User.findOne({ username: username.toLowerCase() }).select(
-        "+password"
-    );
+    const user = await User.findOne({ username: username.toLowerCase() }).select("+password");
 
     if (!(user && (await user.comparePassword(password)))) {
         return next(
-            new AppError("Email or Password do not match or user does not exist", 401)
+            new AppError("Username or Password do not match or user does not exist", 401)
         );
     }
 
@@ -154,75 +208,154 @@ export const loginUser = asyncHandler(async function (req, res, next) {
     }
 
     // Generate a token for the logged-in user
-    const token = await user.generateJWTToken();
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
 
-    delete user.password;
-
-    // Sending cookies
-    res.cookie("token", token, cookieOptions);
-
-    // Sending the response
-    res.status(200).json({
-        success: true,
-        message: "User logged in successfully",
-        user: {
-            username: user.username,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            bio: user.bio,
-            avatar: user.avatar,
-            role: user.role,
-            isVerified: user.isVerified,
-            isBlocked: user.isBlocked,
-            userInfo: user.info || null,
-        },
-    });
+    // Sending the response with cookies
+    res
+        .status(200)
+        .cookie("accessToken", accessToken, CookieOptions)
+        .cookie("refreshToken", refreshToken, CookieOptions)
+        .json({
+            success: true,
+            message: "User logged in successfully",
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                bio: user.bio,
+                avatar: user.avatar,
+                role: user.role,
+                isVerified: user.isVerified,
+                userInfo: user.info || undefined,
+                tokens: { accessToken, refreshToken }
+            },
+        });
 });
 
 /**
  * @LogOut
- * @Route {{URL}}/api/v1/user/logout
+ * @Route {{server}}/user/logout
  * @Method post
  * @Access private( Logged In users only )
  */
 
 export const userLogOut = asyncHandler(async function (req, res, next) {
+    // Get the logged-in user from the database
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $unset: {
+                refreshToken: 1 // this removes the field from document
+            }
+        }
+    )
+
     // Sending back empty cookie
-    res.cookie("token", null, {
+    const cookieOptions = {
         secure: process.env.NODE_ENV === "production" ? true : false,
         maxAge: 0,
         httpOnly: true,
-    });
+    }
 
     // Sending back response data
-    res.status(200).json({
-        success: true,
-        message: "User logged Out successfully",
-    });
+    res
+        .status(200)
+        .clearCookie("accessToken", cookieOptions)
+        .clearCookie("refreshToken", cookieOptions)
+        .json({
+            success: true,
+            message: "User logged Out successfully",
+        });
 });
 
 /**
+ * @GenerateNewToken
+ * @Route {{server}}/user/refresh-token
+ * @Method post
+ * @Access private( Logged In users only )
+ * @ReqData refreshToken
+ */
+
+export const refreshAccessToken = asyncHandler(async (req, res, next) => {
+    // Destructuring request to get refreshToken
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+
+    // Checking if refreshToken found
+    if (!incomingRefreshToken) {
+        return next(new AppError("Refresh Token not found.", 401));
+    }
+
+    try {
+        // Verifying token
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        )
+
+        // Checking if token found valid or not 
+        if (!decodedToken) return next(new AppError("Invalid token", 401));
+
+        // Verifying the user from database and getting token information (will implement only if quantity of users becomes very high.)
+
+        // const user = await User.findById(decodedToken?._id);
+
+        // if (!user) {
+        //     return next(new AppError("Invalid refresh token", 401));
+        // }
+
+        // if (incomingRefreshToken !== user?.refreshToken) {
+        //     throw new AppError("Refresh token is expired or used", 401)
+
+        // }
+
+        // Generating tokens 
+        const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(decodedToken.id);
+
+        // Returning the response
+        return res
+            .status(200)
+            .cookie("accessToken", accessToken, CookieOptions)
+            .cookie("refreshToken", refreshToken, CookieOptions)
+            .json({
+                success: true,
+                message: "Token fetched successfully",
+                tokens: { accessToken, refreshToken }
+            })
+    } catch (error) {
+        return next(new AppError(error?.message || "Server Error", 401));
+    }
+
+})
+
+/**
  * @ForgotPassword
- * @Route {{URL}}/api/v1/user/forgotpassword
+ * @Route {{server}}/user/forgot-password
  * @Method post
  * @Access public
  * @ReqData email
  */
 
 export const forgotPassword = asyncHandler(async function (req, res, next) {
-    const { email } = req.body;
+    const { email, username } = req.body;
 
     // Check if email is provided
-    if (!email) {
-        return new AppError("Email is required", 400);
+    if (!(email || username)) {
+        return next(new AppError("Without Username or Email password can not be changed.", 400));
     }
+
     // Find user by email
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+        $or: [
+            { username: username },
+            { email: email }
+        ]
+    });
 
     // If user is not found, return error
     if (!user) {
-        return next(new AppError("Email not registered", 404));
+        return next(new AppError("Your account not found.", 404));
     }
 
     // Checking if the user has been blocked by admin
@@ -243,14 +376,14 @@ export const forgotPassword = asyncHandler(async function (req, res, next) {
 
     // Create email subject and message
     const subject = "Reset Password";
-    const message = `You can reset your password by clicking <a href=${resetPasswordUrl} target="_blank">Reset your password</a>.<br/><br/>If the above link does not work for some reason then copy paste this link in new tab ${resetPasswordUrl}.<br/><br/> If you have not requested this, kindly ignore.`;
+    const message = `You can reset your password by clicking <a href=${resetPasswordUrl} target="_blank">Reset your password</a>.<br/><br/>If the above link does not work for some reason then copy paste this link in new tab ${resetPasswordUrl}<br/><br/> This link is valid only for 15 minutes.<br/>If you have not requested this, kindly ignore.`;
 
     try {
         // Send password reset email
-        await sendEmail(email, subject, message);
+        await sendEmail(user.email, subject, message);
         res.status(200).json({
             success: true,
-            message: `Reset password link has been sent to ${email} successfully`,
+            message: `Password Reset link has been sent to Your registered email successfully`,
         });
     } catch (error) {
         // If error occurs while sending email, undo reset token and expiry time
@@ -270,19 +403,28 @@ export const forgotPassword = asyncHandler(async function (req, res, next) {
 
 /**
  * @ResetPassword
- * @Route {{URL}}/api/v1/user/reset/:id
+ * @Route {{server}}/user/reset/:id
  * @Method post
  * @Access public
  * @ReqData resettoken in param and password
  */
 
 export const resetPassword = asyncHandler(async function (req, res, next) {
+    // Destructuring request to get the resetToken and password
     const { resetToken } = req.params;
     const { password } = req.body;
 
     // Validate password field
     if (!password) {
         return next(new AppError("Password is required", 400));
+    }
+
+    // Regular expression to match password criteria
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()_+={}\[\]:;<>?,./\\-]).{8,}$/;
+
+    // Test if the password matches the criteria
+    if (!passwordRegex.test(password)) {
+        return next(new AppError('Password should contain atleast 8 characters, small letter, capital letter and symbol', 400));
     }
 
     // Generate hash from the provided reset token
@@ -327,7 +469,7 @@ export const resetPassword = asyncHandler(async function (req, res, next) {
 
 /**
  * @ChangePassword
- * @Route {{URL}}/api/v1/user/change-password
+ * @Route {{server}}/user/change-password
  * @Method post
  * @Access private( Logged in users only )
  * @ReqData oldPassword, newPassword
@@ -353,19 +495,20 @@ export const changePassword = asyncHandler(async function (req, res, next) {
         );
     }
 
+    // Regular expression to match password criteria
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()_+={}\[\]:;<>?,./\\-]).{8,}$/;
+
+    // Test if the password matches the criteria
+    if (!passwordRegex.test(newPassword)) {
+        return next(new AppError('Password should contain atleast 8 characters, small letter, capital letter and symbol', 400));
+    }
+
     // Find the user by id and select the password field
     const user = await User.findById(id).select("+password");
 
     // Check if the user exists
     if (!user) {
         return next(new AppError("Invalid user id or user does not exist", 400));
-    }
-
-    // Check if the user has been blocked by admin
-    if (user.isBlocked) {
-        return next(
-            new AppError(`Your account has been blocked. Please contact support`, 403)
-        );
     }
 
     // Compare the old password with the user's password in the database
@@ -391,7 +534,7 @@ export const changePassword = asyncHandler(async function (req, res, next) {
 
 /**
  * @UserProfile
- * @Route {{URL}}/api/v1/user/profile/:username
+ * @Route {{server}}/user/profile/:username
  * @Method get
  * @Access private( Logged in users only )
  * @ReqData username
@@ -400,25 +543,14 @@ export const changePassword = asyncHandler(async function (req, res, next) {
 export const userProfile = asyncHandler(async function (req, res, next) {
     // Get the username from the request parameters
     const { username } = req.params;
+    const skip = Number(req.body.skip) || 0;
+    const limit = 21;
 
-    // Query the database to find the user with the given username
-    const userDetails = await User.aggregate([
-        { $match: { username } },
-        // Join with the followers collection to get the total number of followers
+    // Define aggregation pipeline stages
+    const pipeline = [
         {
-            $lookup: {
-                from: "followers",
-                localField: "_id",
-                foreignField: "author",
-                as: "isFollowing",
-            },
+            $match: { username }
         },
-        {
-            $addFields: {
-                totalFollowers: { $size: "$isFollowing" },
-            },
-        },
-        // Join with the blogs collection to get the user's blog posts
         {
             $lookup: {
                 from: "blogs",
@@ -432,7 +564,35 @@ export const userProfile = asyncHandler(async function (req, res, next) {
                 totalPosts: { $size: "$blogPosts" },
             },
         },
-        // Limit the number of blog posts returned to 20
+    ];
+
+    // If the requesting user is not the same as the requested user and not an admin, filter unpublished posts
+    if (req.user.username !== username && req.user.role !== "admin") {
+        pipeline.push(
+            {
+                $set: {
+                    blogPosts: {
+                        $filter: {
+                            input: "$blogPosts",
+                            as: "post",
+                            cond: { $eq: ["$$post.isPublished", true] }
+                        }
+                    }
+                }
+            },
+            {
+                $set: {
+                    totalPosts: {
+                        $size: "$blogPosts"
+                    }
+                }
+            }
+        );
+    }
+
+    // Add projection stage to limit the number of returned posts to 20
+    pipeline.push(
+
         {
             $project: {
                 username: 1,
@@ -442,50 +602,82 @@ export const userProfile = asyncHandler(async function (req, res, next) {
                 bio: 1,
                 avatar: 1,
                 role: 1,
-                createdAt: 1,
-                totalFollowers: 1,
-                blogPosts: { $slice: ["$blogPosts", 20] },
-                totalPosts: 1,
-                isBlocked: 1,
                 isClosed: 1,
+                isBlocked: 1,
+                createdAt: 1,
+                followers: 1,
                 isVerified: 1,
+                blogPosts: { $slice: ["$blogPosts", skip, limit] },
+                totalPosts: 1,
+                totalBlogs: { $size: "$blogs" }
             },
-        },
-    ]);
+        }
+    );
 
+    // Execute aggregation pipeline
+    const userDetails = await User.aggregate(pipeline);
     // If the user was not found, return a 404 error
     if (userDetails.length === 0) {
         return res.status(404).json({ message: "User not found" });
     }
 
+    // Check if the user has been verified
+    if (!userDetails[0].isVerified && req.user.role === "user" && req.user.username !== username) {
+        return next(new AppError(`User not found`, 403));
+    }
+
     // Check if the user has been blocked by the admin
     if (userDetails[0].isBlocked && req.user.role === "user") {
-        return next(new AppError(`This account has been blocked by admin.`, 403));
+        return next(new AppError(`User not found`, 403));
     }
 
     // Check if the account is closed
     if (userDetails[0].isClosed && req.user.role === "user") {
-        return next(new AppError(`This account has been closed.`, 403));
+        return next(new AppError(`User not found`, 403));
     }
 
     // Check if the user is the current user or an admin
-    let isAuthor = false;
-    if (req.user.username === username) {
-        isAuthor = true;
+    let isAuthor = true;
+
+    // If current user is neither admin nor author of requested profile
+    if (req.user.username !== username && req.user.role !== "admin") {
+        isAuthor = false;
+        //  Remove user information from response if user is not the author and not an admin
+        let properties = ["email", "createdAt", "isBlocked", "isClosed", "isVerified", "role"];
+        for (let property of properties) {
+            delete userDetails[0][property]
+        }
+
+        //  Remove unnecessary posts fields if the user is not the author and not an admin
+        userDetails[0].blogPosts.forEach((post) => {
+            let properties = ["isPublished", "content", "tags", "comments", "seoKeywords", "createdAt", "updatedAt", "__v"];
+            for (let property of properties) {
+                delete post[property]
+            }
+        })
     }
+    if (!isAuthor) {
+        userDetails[0].totalBlogs = undefined;
+    }
+    const blogPostsToSend = userDetails[0].blogPosts.slice(0, 20);
 
     // Return the user details as a response
     res.status(200).json({
         success: true,
         message: "Profile fetched successfully",
-        isAuthor,
-        userDetails: userDetails[0],
+        isAuthor: isAuthor ? true : undefined,
+        areMore: userDetails[0].blogPosts.length > 20 ? true : false,
+        userDetails: {
+            ...userDetails[0],
+            blogPosts: blogPostsToSend
+        }
     });
 });
 
+
 /**
  * @BlockUser
- * @Route {{URL}}/api/v1/user/profile/:id/block
+ * @Route {{server}}/user/profile/:id/block
  * @Method patch
  * @Access private( Only admin )
  * @ReqData username, id
@@ -497,12 +689,7 @@ export const blockUser = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
 
     // Check if username is provided
-    if (!username) return next(new AppError("Please provide username", 400));
-
-    // Check if the user is an admin
-    if (req.user.role !== "admin") {
-        return next(new AppError("Unauthorized request", 401));
-    }
+    if (!username || !id) return next(new AppError("Please provide username and id", 400));
 
     // Find the user by id
     const user = await User.findById(id);
@@ -524,7 +711,6 @@ export const blockUser = asyncHandler(async function (req, res, next) {
 
     // Set the user's blocked status to true
     user.isBlocked = true;
-    await user.generateJWTToken();
 
     // Save the user
     await user.save();
@@ -532,13 +718,13 @@ export const blockUser = asyncHandler(async function (req, res, next) {
     // Send a success response
     res.status(200).json({
         success: true,
-        message: "The account has been blocked.",
+        message: `Account with username ${username} has been blocked.`,
     });
 });
 
 /**
  * @UnBlockUser
- * @Route {{URL}}/api/v1/user/profile/:id/unblock
+ * @Route {{server}}/user/profile/:id/unblock
  * @Method patch
  * @Access private( Only admin )
  * @ReqData username, id
@@ -550,12 +736,7 @@ export const unBlockUser = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
 
     // Check if username is provided
-    if (!username) return next(new AppError("Please provide username", 400));
-
-    // Check if the user is an admin
-    if (req.user.role !== "admin") {
-        return next(new AppError("Unauthorized request", 401));
-    }
+    if (!username || !id) return next(new AppError("Please provide username and id", 400));
 
     // Find the user by id
     const user = await User.findById(id);
@@ -579,52 +760,32 @@ export const unBlockUser = asyncHandler(async function (req, res, next) {
     // Send a success response
     res.status(200).json({
         success: true,
-        message: "The account has been unblocked successfully.",
+        message: `Account with username ${username} has been unblocked.`,
     });
 });
 
 /**
  * @CloseAccount
- * @Route {{URL}}/api/v1/user/profile/:id/close
+ * @Route {{server}}/user/profile/:id/close
  * @Method patch
  * @Access private( logged in users )
- * @ReqData username, id
  */
 
 export const CloseAccount = asyncHandler(async function (req, res, next) {
-    // Get the user id from the request parameters
-    const { id } = req.params;
-    // Get the username from the request body
-    const { username } = req.body;
-
-    // Check if the username is provided
-    if (!username) {
-        // If not, return an error message
-        return next(new AppError("Please provide username.", 400));
-    }
 
     // Find the user by id
-    let user = await User.findById(id);
+    let user = await User.findById(req.user.id);
 
     // Check if the user exists
     if (!user) {
         // If not, return an error message
-        return next(new AppError("Username is invalid", 404));
+        return next(new AppError("Invalid session. Please logout and login again to continue.", 404));
     }
 
-    // Check if the provided username matches the username of the user found
-    if (user.username !== username)
-        return next(new AppError("Either Id or Username is Incorrect.", 400));
-
     // Check if the current user is trying to close another user's account
-    if (
-        (req.user.role === "user" && req.user.username !== username) ||
-        user.role === "admin"
-    ) {
+    if (user.role === "admin") {
         // If so, return an error message
-        return next(
-            new AppError("You don't have permission to perform this action.", 403)
-        );
+        return next(new AppError("Admin can not close account.", 403));
     }
 
     // Set the isClosed property of the user to true
@@ -636,29 +797,31 @@ export const CloseAccount = asyncHandler(async function (req, res, next) {
     // Define the email subject and message
     const subject = "Your Account has been closed.";
     const message = `<html><head><style>body { font-family: Arial, sans-serif; } .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; } .title { font-size: 24px; margin-bottom: 20px; } .message { font-size: 16px; margin-bottom: 20px; } .link { color: #007bff; text-decoration: none; } .link:hover { text-decoration: underline; }</style></head><body><div class="container"><div class="title">Account Closure Confirmation</div><div class="message">Dear ${user.firstName},<br><br>We regret to inform you that your account on Alcodemy Blog has been closed as per your request. We are sorry to see you go and hope that you had a positive experience with us.<br><br>If you have any questions or concerns, please don't hesitate to contact us at <a href="mailto:support@alcodemy.in">support@alcodemy.in</a>.<br><br>Best regards,<br>The Alcodemy Blog Team</div></div></body></html>`;
-    const email = user.email;
-    // Send the email to the user
-    sendEmail(email, subject, message);
 
-    if (req.user.role !== "admin" && req.user.username === username) {
-        // Clear the token cookie
-        res.cookie("token", null, {
-            secure: process.env.NODE_ENV === "production" ? true : false,
-            maxAge: 0,
-            httpOnly: true,
-        });
+    // Send the email to the user
+    sendEmail(user.email, subject, message);
+
+    // Sending back empty cookie
+    const cookieOptions = {
+        secure: process.env.NODE_ENV === "production" ? true : false,
+        maxAge: 0,
+        httpOnly: true,
     }
 
     // Return a success message
-    res.status(200).json({
-        success: true,
-        message: "Account closed successfully",
-    });
+    res
+        .status(200)
+        .clearCookie("accessToken", cookieOptions)
+        .clearCookie("refreshToken", cookieOptions)
+        .json({
+            success: true,
+            message: "Account closed successfully",
+        });
 });
 
 /**
  * @GenerateVerifyToken
- * @Route {{URL}}/api/v1/user/verify/
+ * @Route {{server}}/user/verify/
  * @Method post
  * @Access private( Only logged in user )
  * @ReqData userid
@@ -671,11 +834,6 @@ export const VerifyTokenEmail = asyncHandler(async function (req, res, next) {
     // Checking if user is found or not
     if (!user) {
         return next(new AppError("User not registered!", 404));
-    }
-
-    // Checking if user is blocked by admin
-    if (user.isBlocked) {
-        return next(new AppError("This account has been blocked by Admin.", 403));
     }
 
     // Checking if the user is already verified
@@ -778,9 +936,9 @@ export const VerifyTokenEmail = asyncHandler(async function (req, res, next) {
 
 /**
  * @VerifyAccount
- * @Route {{URL}}/api/v1/user/profile/:username/verify/:token
+ * @Route {{server}}/user/profile/:username/verify/:token
  * @Method patch
- * @Access public ( AnyOne )
+ * @Access public ( AnyOne who is already registered )
  * @ReqData token
  */
 
@@ -807,7 +965,7 @@ export const VerifyAccount = asyncHandler(async function (req, res, next) {
     }
 
     // Checking if the username of user is same as in request params
-    if(user.username !== username) return next(new AppError("Eithor the token or username is invalid", 400));
+    if (user.username !== username) return next(new AppError("Eithor the token or username is invalid", 400));
 
     // Making user verified
     user.isVerified = true;
@@ -825,75 +983,166 @@ export const VerifyAccount = asyncHandler(async function (req, res, next) {
 
 /**
  * @UpdateProfile
- * @Route {{URL}}/api/v1/user/profile
+ * @Route {{server}}/user/profile
  * @Method patch
  * @Access private( Logged in users only)
  * @ReqData username, firstName, lastName, bio, avatar (optional)
  */
 
 export const updateProfile = asyncHandler(async function (req, res, next) {
-    const { username, firstName, lastName, bio, avatar } = req.body;
+    const { firstName, lastName, bio, email } = req.body;
     const { id } = req.user;
-  
+
     // Check if at least one field is provided for update
-    if (!username && !firstName && !lastName && !bio && !avatar && !req.file) {
-      return next(new AppError("At least one field is required for update.", 400));
-    }
-  
-    const user = await User.findById(id);
-  
-    // Check if user exists
-    if (!user) {
-      return next(new AppError("Invalid user id or user does not exist", 400));
+    if (!firstName && !lastName && !bio && !req.file && !email) {
+        return next(new AppError("At least one field is required for update.", 400));
     }
 
-    // Checking if the user is blocked
-    if(user.isBlocked) return next(new AppError("This account is blocked by admin", 403));
-  
-    // Update user fields
-    if (username) user.username = username;
+    const user = await User.findById(id);
+
+    // Check if user exists
+    if (!user) {
+        return next(new AppError("Invalid user id or user does not exist", 400));
+    }
+
+    if(email) {
+        if(!user.isVerified) user.email = email;
+        else return next(new AppError("Email can not be changed."))
+    }
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
     if (bio) user.bio = bio;
-  
+
     // Handle avatar upload
     if (req.file) {
-      try {
-        const result = await cloudinary.v2.uploader.upload(req.file.path, {
-          folder: "blog/user/avatar",
-          resource_type: "image",
-          width: 350,
-          height: 350,
-          gravity: "faces",
-          crop: "fill",
-        });
-  
-        if (result) {
-          user.avatar.public_id = result.public_id;
-          user.avatar.secure_url = result.secure_url;
+        try {
+            // Remove the old image from cloudinary
+            if (user.avatar.public_id) {
+                await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+            }
+            // uploading new avatar
+            const result = await cloudinary.v2.uploader.upload(req.file.path, {
+                folder: "blog/user/avatar",
+                resource_type: "image",
+                width: 350,
+                height: 350,
+                gravity: "faces",
+                crop: "fill",
+            });
+
+            if (result) {
+                user.avatar.public_id = result.public_id;
+                user.avatar.secure_url = result.secure_url;
+            }
+
+            fs.rm(`uploads/${req.file.filename}`);
+        } catch (error) {
+            console.log("not uploaded");
+            for (const file of await fs.readdir("uploads/")) {
+                if (file == ".gitkeep") continue;
+                await fs.unlink(path.join("uploads/", file));
+            }
+            return next(
+                new AppError(JSON.stringify(error) || "File not uploaded, please try again", 400)
+            );
         }
-  
-        fs.rm(`uploads/${req.file.filename}`);
-      } catch (error) {
-        console.log("not uploaded");
-        for (const file of await fs.readdir("uploads/")) {
-          if (file == ".gitkeep") continue;
-          await fs.unlink(path.join("uploads/", file));
-        }
-        return next(
-          new AppError(JSON.stringify(error) || "File not uploaded, please try again", 400)
-        );
-      }
     }
-  
-    await user.save();
-  
+
+    const updatedUser = await user.save({ new: true });
+
     // Remove password field from user object before sending it as a response
     user.password = undefined;
-  
+
     res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      user,
+        success: true,
+        message: "Profile updated successfully",
+        updatedUser,
     });
-  });
+});
+
+
+/**
+ * @DeleteUser
+ * @Route {{server}}/user/profile/:id
+ * @Method delete
+ * @Access private (only admin)
+ * @ReqData id
+ */
+
+export const DeleteUser = asyncHandler(async function (req, res, next) {
+    const { id } = req.params;
+
+    // Checking user authorization
+    if (req.user.id !== id && req.user.role !== "admin") {
+        return next(new AppError('You do not have permission to perform this action', 403))
+    }
+
+    // Finding user
+    const user = await User.findById(id);
+
+    // Check if the post exists
+    if (!user) return next(new AppError("User not found", 404));
+
+    if (user.role === "admin") {
+        return next(new AppError("Admin account cannot be deleted.", 403));
+    }
+
+    user.isBlocked = true;
+    await user.save();
+
+    try {
+        // Delete all resources with the specified prefix (folder path)
+        await cloudinary.v2.api.delete_resources_by_prefix(`blog/posts/${user.username}`);
+
+        // Delete the folder and all resources within it
+        await cloudinary.v2.api.delete_folder(`blog/posts/${user.username}`);
+
+    } catch (error) {
+        console.log(error.error.message)
+    }
+
+    // Remove the old image from cloudinary
+    if (user.avatar.public_id) {
+        await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+    }
+
+    // Delete the post from the database
+    Blog.deleteMany({ author: id });
+    Like.deleteMany({ author: id });
+    Follower.deleteMany({ author: id });
+    Comment.deleteMany({ blogAuthor: id });
+    Resourcefile.deleteMany({ user: id });
+
+    // Remove the post ID from the user's blogs array
+    await User.findByIdAndDelete(id);
+
+    // Respond with success message and post details
+    res.status(200).json({
+        success: true,
+        message: `User with username ${user.username} deleted successfully`
+    });
+});
+
+/**
+ * @RegisteredUsers
+ * @Route {{sever}}/user/profile
+ * @Method get
+ * @Access private (only admin)
+ * @ReqData skip
+ */
+
+export const AllUsers = asyncHandler(async function (req, res, next) {
+    const skip = Number(req.query.skip) || 0;
+    const limit = 21;
+    const users = await User.find()
+        .sort([['createdAt', -1]])
+        .skip(skip)
+        .limit(limit)
+
+    res.status(200).json({
+        success: true,
+        message: "Users fetched successfully",
+        count: await User.countDocuments(),
+        data: users
+    })
+})

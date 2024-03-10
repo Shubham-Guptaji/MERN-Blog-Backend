@@ -4,17 +4,16 @@ const followerSchema = new Schema({
   author: {
     type: Schema.Types.ObjectId,
     ref: 'Author',
-    required: true
+    required: [true, "Author Id is required"]
   },
   user: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: [true, "User Id is required."]
   },
   blog: {
     type: Schema.Types.ObjectId,
     ref: 'Blog'
-    // required: true
   }
 }, {timestamps: true});
 

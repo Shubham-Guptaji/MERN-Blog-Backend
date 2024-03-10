@@ -52,10 +52,6 @@ const userSchema = new Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
   blogs: [
     {
       type: Schema.Types.ObjectId,
@@ -68,10 +64,9 @@ const userSchema = new Schema({
   },
   resetToken: String,
   resetTokenExpiry: Date,
-  isBlocked: {
-    type: Boolean,
-    default: false
-  },
+  verifyToken: String,
+  verifyTokenExpiry: Date,
+  refreshToken: String,
   isVerified: {
     type: Boolean,
     default: false
@@ -80,8 +75,14 @@ const userSchema = new Schema({
     type: Boolean,
     default: false
   },
-  verifyToken: String,
-  verifyTokenExpiry: Date
+  isBlocked: {
+    type: Boolean,
+    default: false
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 }, {timestamps: true});
 
 
@@ -95,11 +96,33 @@ userSchema.methods = {
     return await bcrypt.compare(plainPassword, this.password);
   },
 
-  generateJWTToken : async function () {
+  generateAccessToken : async function () {
     return jwt.sign(
-      {id:this._id, username: this.username, role: this.role, isBlocked: this.isBlocked, isVerified: this.isVerified, isClosed: this.isClosed},
-      process.env.JWT_SECRET,
-      {expiresIn: process.env.JWT_EXPIRTY}
+      {
+        id:this._id, 
+        username: this.username,
+        email: this.email, 
+        role: this.role, 
+        isBlocked: this.isBlocked, 
+        isVerified: this.isVerified, 
+        isClosed: this.isClosed
+      },
+      process.env.ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+      }
+    )
+  },
+
+  generateRefreshToken : async function () {
+    return jwt.sign(
+      {
+        id: this._id
+      },
+      process.env.REFRESH_TOKEN_SECRET,
+      {
+        expiresIn: process.env.REFRESH_TOKEN_EXPIRTY
+      }
     )
   },
 
