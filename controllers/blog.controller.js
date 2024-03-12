@@ -304,7 +304,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
                 $and: [
                     {
                         $or: [
-                            { tags: { $regex: tagsearch } },
+                            { tags: { $regex: tagsearch, $options: 'i' } },
                             { title: { $regex: new RegExp(tagsearch, "i") } },
                         ],
                     },

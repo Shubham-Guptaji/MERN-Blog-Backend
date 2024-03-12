@@ -2,7 +2,7 @@ import { Router } from "express";
 import { isAdmin, isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
 import upload from "../middlewares/multer.middleware.js";
 import { AllUsers, CloseAccount, DeleteUser, VerifyAccount, VerifyTokenEmail, blockUser, changePassword, forgotPassword, loginUser, refreshAccessToken, registerUser, resetPassword, unBlockUser, updateProfile, userLogOut, userProfile } from "../controllers/user.controller.js";
-import rate from "../utils/requestLimit.js";
+import rate from "../middlewares/requestLimit.js";
 
 const router = Router();
 

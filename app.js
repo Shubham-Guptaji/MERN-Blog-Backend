@@ -18,7 +18,7 @@ app.use(
     })
 )
 
-app.use(morgan('dev')); // combine for production dev for development
+app.use(morgan('dev')); // combine for production dev for development 
 app.use(cookieParser());
 
 app.get('/ping',(_req, res) => {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { UnLikePost, LikePost, contactformHandler, followUser, unfollowUser, userFollowers, UserFollowing, AllContacts, DeleteContact } from "../controllers/miscellaneous.controllers.js";
 import { isAdmin, isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
-import rate from "../utils/requestLimit.js";
+import rate from "../middlewares/requestLimit.js";
 
 const router = Router(); 
 

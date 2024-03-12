@@ -53,7 +53,7 @@ export const AddResource = asyncHandler(async function (req, res, next) {
         });
     } catch (err) {
         await fs.unlink(`uploads/${req.file.filename}`);
-        return next(new AppError('Server error occurred.', 500));
+        return next(new AppError(`Server error occurred.`, 500));
     }
 });
 
@@ -81,35 +81,35 @@ export const BlogResource = asyncHandler(async function (req, res, next) {
         }
     
         // Handling resources for the blog post
-        let newResouces;
-        try{
-            newResouces = JSON.parse(req.body.resources);
+        let newResources;
+        try {
+            newResources = JSON.parse(req.body.resources);
         } catch(error) {
             return next(new AppError("Invalid JSON format for resources added", 400))
         }
     
         // Checking if resources are array
-        if (!Array.isArray(newResouces)){
+        if (!Array.isArray(newResources)){
             return next(new AppError("Resources should be provided as an array.", 400));
         }
     
-        // Saving the blog id to resources
-        for(let id of newResouces){
-            const resource = await Resourcefile.findById(id);
+        // Find all resources in a single query
+        const resources = await Resourcefile.find({
+            _id: { $in: newResources },
+            user: req.user.id,
+            blog: { $exists: false } // Filter out resources already associated with a blog
+        });
     
-            if(resource.user.toString() !== req.user.id) {
-                return next( new AppError("Not authorized for adding resources", 403));
-            }
-    
-            if(!resource) {
-                return next(new AppError("Invalid resource id", 404));
-            }
-            if(resource.blog) continue
-    
-            resource.blog = newBlog._id
-    
-            await resource.save();
+        // Check if all resources belong to the user
+        if (resources.length !== newResources.length) {
+            return next(new AppError("Some resources are invalid or not authorized for adding to the blog.", 403));
         }
+    
+        // Update all resources to associate them with the new blog
+        await Resourcefile.updateMany(
+            { _id: { $in: newResources } },
+            { $set: { blog: newBlog._id } }
+        );
     
         // Sending response
         res.status(200).json({
@@ -119,8 +119,7 @@ export const BlogResource = asyncHandler(async function (req, res, next) {
     } catch (error) {
         next(new AppError("Invalid resources id", 400));
     }   
-})
-
+});
 
 /**
 * @DeletePost

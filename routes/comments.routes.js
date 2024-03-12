@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
 import { CreateComment, deleteComment, editComment } from "../controllers/comments.controller.js";
-import rate from "../utils/requestLimit.js";
+import rate from "../middlewares/requestLimit.js";
 
 const router = Router();
 

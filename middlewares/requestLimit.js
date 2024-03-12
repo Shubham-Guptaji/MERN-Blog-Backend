@@ -1,5 +1,5 @@
 import rateLimit from "express-rate-limit";
-import AppError from "./appError.js";
+import AppError from "../utils/appError.js";
 
 const rate = function ( windowMs, max) {
     return rateLimit({
