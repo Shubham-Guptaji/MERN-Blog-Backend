@@ -9,6 +9,14 @@ import cloudinary from 'cloudinary';
 import Resourcefile from '../models/resources.model.js';
 import Like from '../models/like.model.js';
 
+// array shuffle function
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
 
 /**
  * @CreatePost
@@ -270,7 +278,7 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
 
     // Map over the array of trending posts to get the trending keywords
     const keywords = trendingPosts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
-    const topKeywords = Array.from(new Set(keywords)).slice(0, Math.min(keywords.length, 15));
+    const topKeywords = shuffleArray(Array.from(new Set(keywords))).slice(0, Math.min(keywords.length, 15));
 
     res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts,authorPosts: authorPosts.slice(0, 20), topKeywords } });
 });
