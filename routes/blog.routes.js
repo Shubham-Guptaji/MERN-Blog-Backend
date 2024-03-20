@@ -12,10 +12,9 @@ router.get("/", rate(5*60*1000, 30), getHomeBlogs);
 router.get("/posts", rate(5*60*1000, 20), AllPosts);
 router.post("/tag", rate(5*60*1000, 30), tagBlog);
 router.patch("/publish/:id", rate(5*60*1000, 10), isLoggedIn, PublishBlog);
-
+router.get("/:url", rate(5*60*1000, 20), getBlogpost);
 router
     .route("/:id")
-        .get(rate(5*60*1000, 25), getBlogpost)
         .put(rate(15*60*1000, 10), isLoggedIn, upload.single("postImage"), UpdatePost)
         .patch(rate(15*60*1000, 20), isLoggedIn, unPublishBlog)
         .delete(rate(15*60*1000, 12), isLoggedIn, DeletePost);

@@ -37,12 +37,19 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     }
 
     // Extract required fields from request body
-    const { title, content, tags, seoKeywords, metaDescription } = req.body;
+    const { title, content, tags, seoKeywords, metaDescription, url } = req.body;
 
     // Validate required fields
-    if (!title || !content || !tags || !seoKeywords || !metaDescription || !req.file) {
+    if (!title || !content || !tags || !seoKeywords || !metaDescription || !req.file || !url) {
         if (req.file) fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("All fields are mandatory including post image", 400));
+    }
+
+    // Check if URL already present or not
+    const isBlogPresent = await Blog.findOne({url});
+    if(isBlogPresent) {
+        if (req.file) fs.rm(`uploads/${req.file.filename}`);
+        return next( new AppError("URL already exist for another blog.", 400));
     }
 
     // Create a new blog post
@@ -52,7 +59,8 @@ export const createBlog = asyncHandler(async function (req, res, next) {
         author: authorId,
         isPublished: true,
         seoKeywords,
-        metaDescription
+        metaDescription,
+        url
     });
 
     // adding tags in post
@@ -68,10 +76,11 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     if (!Array.isArray(tagslist)) {
         fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError('Please provide valid tag data (array)', 400));
+    }else if(tagslist.length > 10) {
+        fs.rm(`uploads/${req.file.filename}`);
+        return next(new AppError('Please provide atmost 10 tags only.', 400));
     }
     newBlog.tags = tagslist;
-
-    
 
     // Handle scenario if new blog post could not be created
     if (!newBlog) {
@@ -235,6 +244,7 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                     // seoKeywords: 1,
                     metaDescription: 1,
                     public_image: 1,
+                    url: 1
                 },
             },
             {
@@ -356,6 +366,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
                 metaDescription: 1,
                 public_image: 1,
                 tags: 1,
+                url: 1
             },
         },
     ]);
@@ -376,7 +387,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
 
 /**
  * @GetSpecificPost
- * @Route {{server}}/blogs/:id
+ * @Route {{server}}/blogs/:url
  * @Method get
  * @Access public
  * @ReqData id
@@ -384,15 +395,14 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
 
 export const getBlogpost = asyncHandler(async function (req, res, next) {
     // Getting Id from the parameter
-    const { id } = req.params;
+    const { url } = req.params;
 
     try {
-        // Convert the id from hex string to ObjectId
-        const objectId = mongoose.Types.ObjectId.createFromHexString(id);
+        console.log(url);
 
         // Fetch the blog post details
         const postDetails = await Blog.aggregate([
-            { $match: { _id: objectId, isPublished: true } },
+            { $match: { url: url, isPublished: true } },
             {
                 $lookup: {
                     from: 'users',
@@ -429,6 +439,7 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
                     metaDescription: 1,
                     public_image: 1,
                     tags: 1,
+                    url: 1
                 },
             },
         ]);
@@ -438,9 +449,12 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
             return next(new AppError("This Post not found", 404));
         }
 
+        // Convert the id from hex string to ObjectId
+        // const objectId = mongoose.Types.ObjectId.createFromHexString(postDetails._id);
+
         // Fetch the comments for the post
         const comments = await Comment.aggregate([
-            { $match: { blog: objectId } },
+            { $match: { blog: postDetails._id } },
             {
                 $lookup: {
                     from: 'users',
@@ -674,7 +688,8 @@ export const AllPosts = asyncHandler(async function(req, res, next) {
                     seoKeywords: 1,
                     metaDescription: 1,
                     public_image: 1,
-                    tags: 1
+                    tags: 1,
+                    url: 1
                 }
             }
         ]);

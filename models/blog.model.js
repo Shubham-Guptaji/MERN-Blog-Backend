@@ -10,6 +10,12 @@ const blogSchema = new Schema({
     type: String,
     required: [true, "Title is required"]
   },
+  url: {
+    type: String,
+    required: [true, "URL is required"],
+    unique: [true, "URL already in use. Please  provide a different URL."],
+    trim: true
+  },
   seoKeywords: {
     type: String,
     default: ''
