@@ -51,6 +51,13 @@ This repository contains the backend code for a full-fledged blog website. It pr
 6. **Testing:**
 - Use tools like Postman or write unit tests to ensure the APIs work as expected.
 
+## Api Documentation
+- User Apis Documentation : https://documenter.getpostman.com/view/31843425/2sA2xjyAih
+- Blog Apis Documentation : https://documenter.getpostman.com/view/31843425/2sA2xk1BXv
+- Resource File Apis Documentation : https://documenter.getpostman.com/view/31843425/2sA2xk1BcF
+- Miscellaneous and Social Apis Documentation : https://documenter.getpostman.com/view/31843425/2sA2xk1BcE
+- Comment Apis Documentation : https://documenter.getpostman.com/view/31843425/2sA2xk1BcC
+
 ## Ownership
 - Shubham Gupta
 
