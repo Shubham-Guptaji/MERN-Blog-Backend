@@ -28,12 +28,12 @@ function shuffleArray(array) {
 
 export const createBlog = asyncHandler(async function (req, res, next) {
 
-    const { authorId }  = req.body;
+    const { authorId } = req.body;
 
     // Authorization
-    if(req.user.id !== authorId && req.user.role !== "admin"){
+    if (req.user.id !== authorId && req.user.role !== "admin") {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
-        return  next(new AppError('You do not have permission to perform this action', 403));
+        return next(new AppError('You do not have permission to perform this action', 403));
     }
 
     // Check if the user is present
@@ -54,10 +54,10 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     }
 
     // Check if URL already present or not
-    const isBlogPresent = await Blog.findOne({url});
-    if(isBlogPresent) {
+    const isBlogPresent = await Blog.findOne({ url });
+    if (isBlogPresent) {
         if (req.file) fs.rm(`uploads/${req.file.filename}`);
-        return next( new AppError("URL already exist for another blog.", 400));
+        return next(new AppError("URL already exist for another blog.", 400));
     }
 
     // Create a new blog post
@@ -84,7 +84,7 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     if (!Array.isArray(tagslist)) {
         fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError('Please provide valid tag data (array)', 400));
-    }else if(tagslist.length > 10) {
+    } else if (tagslist.length > 10) {
         fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError('Please provide atmost 10 tags only.', 400));
     }
@@ -95,7 +95,7 @@ export const createBlog = asyncHandler(async function (req, res, next) {
         fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("Blog could not be created", 500))
     }
-    
+
 
     // Add the new blog post to the user's list of blogs
     user.blogs.push(newBlog._id);
@@ -131,7 +131,7 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     await newBlog.save();
     await user.save();
 
-    
+
 
     // Respond with success message and the new blog post
     res.status(201).json({
@@ -244,7 +244,8 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                         username: 1,
                         firstName: 1,
                         lastName: 1,
-                        // bio: 1
+                        // bio: 1,
+                        avatar: 1
                     },
                     tags: 1,
                     likes: 1,
@@ -259,10 +260,10 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                 $sort: { likes: -1 }, // Sort by likes (descending)
             },
             {
-                $limit: 6, // Limit to 6 documents
+                $limit: 2, // Limit to 6 documents
             },
         ]),
-        User.find({ isClosed: false, isBlocked: false }, { _id: 1 })
+        User.find({ isClosed: false, isBlocked: false }, { _id: 1, username: 1, firstName: 1, lastName: 1, avatar: 1 })
             .sort({ followers: -1 })
             .limit(26)
     ]);
@@ -272,12 +273,41 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
         return res.status(200).json({ success: true, message: "No trending posts found." });
     }
 
+    let authdata = {};
+    authors.forEach((element) => authdata[element["_id"]] = element);
+
     const authorIds = authors.map(author => author._id);
 
     // Fetching popular author posts from authors who are neither closed nor blocked
     const popularAuthorPosts = await Blog.find({ author: { $in: authorIds }, isPublished: true })
-        .select("_id title author tags likes metaDescription public_image")
+        .select("_id title author tags likes metaDescription public_image url")
         .limit(26);
+
+    // const popularAuthorPosts = await Blog.aggregate([
+    //     { $match: { author: { $in: authorIds }, isPublished: true } },
+    //     // { $sort: { author: 1, likes: -1 } }, // Sort by author and likes descending
+    //     {
+    //       $group: {
+    //         _id: "$author",
+    //         post: { $first: "$$ROOT" } // Get the first post for each author
+    //       }
+    //     },
+    //     { $replaceRoot: { newRoot: "$post" } }, // Replace the root document with the post
+    //     {
+    //       $project: {
+    //         _id: 1,
+    //         title: 1,
+    //         author: 1,
+    //         tags: 1,
+    //         likes: 1,
+    //         metaDescription: 1,
+    //         public_image: 1,
+    //         url: 1
+    //       }
+    //     },
+    //     { $limit: 26 } // Limit the total number of posts
+    //   ]);
+
 
     if (!trendingPosts.length || !popularAuthorPosts.length) {
         return next(new AppError("Some Error Occurred", 500));
@@ -286,11 +316,13 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
     // Filter author posts that are not in popular posts
     const authorPosts = popularAuthorPosts.filter(post => !trendingPosts.some(trendingpost => trendingpost._id.equals(post._id)));
 
+    authorPosts.forEach((element) => element["author"] = authdata[element["author"]]);
+
     // Map over the array of trending posts to get the trending keywords
     const keywords = trendingPosts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
     const topKeywords = shuffleArray(Array.from(new Set(keywords))).slice(0, Math.min(keywords.length, 15));
 
-    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts,authorPosts: authorPosts.slice(0, 20), topKeywords } });
+    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, authorPosts: authorPosts.slice(0, 20), topKeywords } });
 });
 
 
@@ -388,7 +420,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
     res.status(200).json({
         success: true,
         message: "Searched posts fetched successfully",
-        areMore: posts.length > 20  ? true : false,
+        areMore: posts.length > 20 ? true : false,
         posts,
     });
 });
@@ -507,15 +539,15 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
 export const UpdatePost = asyncHandler(async function (req, res, next) {
     // Getting post id from parameter
     const { id } = req.params;
-    const { authorId }  = req.body;
+    const { authorId } = req.body;
 
     // Authorization
-    if(req.user.id !== authorId && req.user.role !== "admin"){
+    if (req.user.id !== authorId && req.user.role !== "admin") {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
-        return  next(new AppError('You do not have permission to perform this action', 403));
+        return next(new AppError('You do not have permission to perform this action', 403));
     }
 
-    if(!(req.body.title || req.body.content || req.body.seoKeywords || req.body.metaDescription || req.body.tags || req.file)) {
+    if (!(req.body.title || req.body.content || req.body.seoKeywords || req.body.metaDescription || req.body.tags || req.file)) {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
         return next(new AppError("Atleast one information for updation  is required.", 400));
     }
@@ -596,13 +628,13 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
 
 export const DeletePost = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
-    const { authorId }  = req.body;
+    const { authorId } = req.body;
 
-    if(req.user.id !== authorId && req.user.role !== "admin"){
-        return  next(new AppError('You do not have permission to perform this action', 403));
+    if (req.user.id !== authorId && req.user.role !== "admin") {
+        return next(new AppError('You do not have permission to perform this action', 403));
     }
 
-    const post = await Blog.findOne({_id: id, author: authorId})
+    const post = await Blog.findOne({ _id: id, author: authorId })
 
     // Check if the post exists
     if (!post) return next(new AppError("Your Post not found", 404));
@@ -619,7 +651,7 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
     // Delete the post from the database
     await Blog.findByIdAndDelete(id);
     await Comment.deleteMany({ blog: id });
-    await Like.deleteMany({ blog: id});
+    await Like.deleteMany({ blog: id });
     await Resourcefile.deleteMany({ blog: id });
 
     // Remove the post ID from the user's blogs array
@@ -642,7 +674,7 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
  * @ReqData skip 
  */
 
-export const AllPosts = asyncHandler(async function(req, res, next) {
+export const AllPosts = asyncHandler(async function (req, res, next) {
     try {
         // Extract skip and limit values from request or set default values
         const skip = Number(req.query.skip) || 0;
@@ -706,8 +738,8 @@ export const AllPosts = asyncHandler(async function(req, res, next) {
         res.status(200).json({
             success: true,
             message: "All posts fetched successfully",
-            areMore: posts.length > 20 ?  true : false,
-            posts : posts.slice(0,20)
+            areMore: posts.length > 20 ? true : false,
+            posts: posts.slice(0, 20)
         });
     } catch (error) {
         // Handle errors
