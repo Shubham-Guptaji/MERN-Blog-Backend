@@ -38,10 +38,11 @@ export const contactformHandler = asyncHandler(async function (req, res, next) {
     // Save the new entry to the database
     await newContact.save();
     const newMessage = `
-      <h2>New Message Received</h2>
+      <h2>New Message Received at Alcodemy Blog</h2>
       <p><b>Name: </b>${newContact.name}</p>
       <p><b>Email: </b><a href="mailto:${newContact.email}">${newContact.email}</a></p>
-      <p><b>Subject: </b>${newContact.subject}<br/><i>${newContact.message}</i></p>
+      <p><b>Subject: </b>${newContact.subject}<br/></p>
+      <p><b>Message: </b><i>${newContact.message}</i></p>
     `
     sendEmail(process.env.CONTACT_US_EMAIL, subject, newMessage)
 

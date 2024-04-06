@@ -57,7 +57,7 @@ export const registerUser = asyncHandler(async function (req, res, next) {
     const { username, email, firstName, lastName, password } = req.body;
 
     // Check if all the required fields are provided
-    if (!username || !email || !firstName || !lastName || !password) {
+    if (!username || !email || !firstName || !lastName || !password || !req.file) {
         if (req.file) fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError("All fields are mandatory.", 400));
     }
@@ -141,7 +141,6 @@ export const registerUser = asyncHandler(async function (req, res, next) {
 
         // Generate a token for the logged-in user
         const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
-
         // Send a success response with the user's details
         res
             .status(201)
