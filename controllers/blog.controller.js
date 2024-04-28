@@ -321,7 +321,6 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
     // Map over the array of trending posts to get the trending keywords
     const keywords = trendingPosts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
     const topKeywords = shuffleArray(Array.from(new Set(keywords))).slice(0, Math.min(keywords.length, 15));
-
     res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, authorPosts: authorPosts.slice(0, 20), topKeywords } });
 });
 
@@ -401,6 +400,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
                     firstName: 1,
                     lastName: 1,
                     bio: 1,
+                    avatar: 1
                 },
                 seoKeywords: 1,
                 metaDescription: 1,
@@ -416,12 +416,16 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
         return next(new AppError("Post not found with related search", 404));
     }
 
+    const keywords = posts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
+    const topKeywords = shuffleArray(Array.from(new Set(keywords))).slice(0, Math.min(keywords.length, 15));
+
     // Sending response
     res.status(200).json({
         success: true,
         message: "Searched posts fetched successfully",
         areMore: posts.length > 20 ? true : false,
         posts,
+        keywords: topKeywords
     });
 });
 
@@ -438,7 +442,6 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
     const { url } = req.params;
 
     try {
-        console.log(url);
 
         // Fetch the blog post details
         const postDetails = await Blog.aggregate([
@@ -734,12 +737,18 @@ export const AllPosts = asyncHandler(async function (req, res, next) {
             }
         ]);
 
+        const responsePosts = posts.slice(0, 20);
+        // Map over the array of trending posts to get the trending keywords
+        const keywords = responsePosts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
+        const topKeywords = shuffleArray(Array.from(new Set(keywords))).slice(0, Math.min(keywords.length, 15));
+
         // Send the response with fetched posts
         res.status(200).json({
             success: true,
             message: "All posts fetched successfully",
             areMore: posts.length > 20 ? true : false,
-            posts: posts.slice(0, 20)
+            posts: responsePosts,
+            keywords: topKeywords
         });
     } catch (error) {
         // Handle errors

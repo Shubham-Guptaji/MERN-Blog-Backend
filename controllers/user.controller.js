@@ -227,7 +227,6 @@ export const loginUser = asyncHandler(async function (req, res, next) {
                 avatar: user.avatar,
                 role: user.role,
                 isVerified: user.isVerified,
-                userInfo: user.info || undefined,
                 tokens: { accessToken, refreshToken }
             },
         });
