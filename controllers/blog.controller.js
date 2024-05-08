@@ -257,7 +257,7 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                 },
             },
             {
-                $sort: { likes: -1 }, // Sort by likes (descending)
+                $sort: { likes: -1, createdAt: -1 }, // Sort by likes (descending)
             },
             {
                 $limit: 6, // Limit to 6 documents
@@ -280,12 +280,13 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
 
     // Fetching popular author posts from authors who are neither closed nor blocked
     const popularAuthorPosts = await Blog.find({ author: { $in: authorIds }, isPublished: true })
+        .sort({ createdAt: -1 })
         .select("_id title author tags likes metaDescription public_image url")
         .limit(26);
 
     // const popularAuthorPosts = await Blog.aggregate([
     //     { $match: { author: { $in: authorIds }, isPublished: true } },
-    //     // { $sort: { author: 1, likes: -1 } }, // Sort by author and likes descending
+    //     // { $sort: { author: 1, likes: -1, createdAt: -1 } }, // Sort by author and likes descending
     //     {
     //       $group: {
     //         _id: "$author",
@@ -516,16 +517,14 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
                 },
             },
         ]);
-
         // Send the response with post details and comments
         res.status(200).json({
             success: true,
             message: "Post fetched successfully",
-            postDetails,
+            postDetails: postDetails[0],
             comments,
         });
     } catch (error) {
-        console.error("Error fetching post details:", error);
         return next(new AppError("Invalid blog ID", 400));
     }
 });
@@ -706,6 +705,9 @@ export const AllPosts = asyncHandler(async function (req, res, next) {
                         { 'author.isBlocked': { $ne: true } } // Filter out blocked authors
                     ]
                 }
+            },
+            {
+                $sort: { createdAt: -1 } // Sort posts by createdAt in descending order
             },
             {
                 $skip: skip // Skip records based on skip value
