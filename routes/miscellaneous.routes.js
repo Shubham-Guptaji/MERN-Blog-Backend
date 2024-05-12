@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { UnLikePost, LikePost, contactformHandler, followUser, unfollowUser, userFollowers, UserFollowing, AllContacts, DeleteContact } from "../controllers/miscellaneous.controllers.js";
+import { UnLikePost, LikePost, contactformHandler, followUser, unfollowUser, userFollowers, UserFollowing, AllContacts, DeleteContact, PostLikes } from "../controllers/miscellaneous.controllers.js";
 import { isAdmin, isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
 import rate from "../middlewares/requestLimit.js";
 
@@ -14,5 +14,7 @@ router.post("/follower/follow", rate(15*60*1000, 15), isLoggedIn, isVerified, fo
 router.delete("/follower/unfollow/:FollowId", rate(15*60*1000, 15), isLoggedIn, unfollowUser)
 router.get("/like/:postId", rate(5*60*1000, 20), isLoggedIn, isVerified, LikePost);
 router.delete('/dislike/:postId', rate(5*60*1000, 20), isLoggedIn, UnLikePost); 
+
+router.post("/likecount", rate(5*60*1000, 50), PostLikes);
 
 export default router;

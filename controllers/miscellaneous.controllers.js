@@ -424,6 +424,42 @@ export const unfollowUser = asyncHandler(async function (req, res, next) {
 });
 
 /**
+ * @CurrentPostLikeCount
+ * @Route {{URL}}/api/v1/likecount
+ * @Method post
+ * @Access private (logged in users) 
+ * @ReqData postId, authId
+ */
+
+export const PostLikes = asyncHandler(async function (req, res, next) {
+  // Extract the postId from the request parameters
+  const { postId, userId } = req.body;
+  try {
+    if(!postId) return next(new AppError("PostId is required", 400));
+    // Count Likes;
+    const totalLikes = await Blog.find({ _id: postId, isPublished: true }).select("likes");
+    if(!totalLikes) return next(new AppError("Invalid PostId", 400));
+  
+      let isLiked = false;
+      let likeinfo
+      if(userId) likeinfo = await Like.findOne({ blog: postId, user: userId });
+      if (likeinfo) isLiked = true;
+  
+    // Return the success response
+    res.status(200).json({
+      success: true,
+      message: "Likes Count fetched successfully.",
+      data: {
+        totalLikes: totalLikes[0].likes,
+        isLiked
+      }
+    })
+  } catch (error) {
+      return next(new AppError("Can't get the likes count.."));
+  }
+})
+
+/**
  * @LikePost
  * @Route  {{URL}}/api/v1/like/:postId
  * @Method get
@@ -451,13 +487,16 @@ export const LikePost = asyncHandler(async function (req, res, next) {
   }
 
   // Create a new like
-  likeinfo = await Like.create({ blog: postId, user: req.user.id, author: blog.author });
+  await Like.create({ blog: postId, user: req.user.id, author: blog.author });
 
   // Send response
   res.status(200).json({
     success: true,
     message: "Liked the post",
-    data: likeinfo
+    data: {
+      totalLikes : blog.likes,
+      isLiked : true
+    }
   })
 })
 
@@ -482,7 +521,7 @@ export const UnLikePost = asyncHandler(async function (req, res, next) {
   }
 
   // Decrement the number of likes for the blog
-  await Blog.findByIdAndUpdate(postId, { $inc: { likes: -1 } }).catch((err) => {
+  const blog = await Blog.findByIdAndUpdate(postId, { $inc: { likes: -1 } }, {new: true}).catch((err) => {
     console.log(err);
   });
 
@@ -492,6 +531,10 @@ export const UnLikePost = asyncHandler(async function (req, res, next) {
   // Return the updated info to the client side
   res.status(200).json({
     status: true,
-    message: "Unliked the post"
+    message: "Unliked the post",
+    data: {
+      totalLikes : blog.likes,
+      isLiked : false
+    }
   });
 });

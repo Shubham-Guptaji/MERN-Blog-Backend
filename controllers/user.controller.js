@@ -311,6 +311,24 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
         // Generating tokens 
         const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(decodedToken.id);
 
+
+        // Finding the User in Database by username and if found then compare password
+    const user = await User.findById(decodedToken.id);
+
+    // Checking if the user has been blocked by admin
+    if (user.isBlocked) {
+        return next(
+            new AppError(`Your account has been blocked. Please contact support`, 403)
+        );
+    }
+
+    // Checking if the user's account is closed, then open it again
+    if (user.isClosed) {
+        user.isClosed = false;
+        await user.save();
+        user.info = "Account reopened successfully.";
+    }
+
         // Returning the response
         return res
             .status(200)
@@ -319,7 +337,19 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
             .json({
                 success: true,
                 message: "Token fetched successfully",
-                tokens: { accessToken, refreshToken }
+                // tokens: { accessToken, refreshToken }
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    bio: user.bio,
+                    avatar: user.avatar,
+                    role: user.role,
+                    isVerified: user.isVerified,
+                    tokens: { accessToken, refreshToken }
+                },
             })
     } catch (error) {
         return next(new AppError(error?.message || "Server Error", 401));

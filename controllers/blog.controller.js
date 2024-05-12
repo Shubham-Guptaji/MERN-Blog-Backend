@@ -84,9 +84,9 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     if (!Array.isArray(tagslist)) {
         fs.rm(`uploads/${req.file.filename}`);
         return next(new AppError('Please provide valid tag data (array)', 400));
-    } else if (tagslist.length > 10) {
+    } else if (tagslist.length > 15) {
         fs.rm(`uploads/${req.file.filename}`);
-        return next(new AppError('Please provide atmost 10 tags only.', 400));
+        return next(new AppError('Please provide atmost 15 tags only.', 400));
     }
     newBlog.tags = tagslist;
 
@@ -433,7 +433,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
 /**
  * @GetSpecificPost
  * @Route {{server}}/blogs/:url
- * @Method get
+ * @Method post
  * @Access public
  * @ReqData id
  */
@@ -441,7 +441,7 @@ export const tagBlog = asyncHandler(async function (req, res, next) {
 export const getBlogpost = asyncHandler(async function (req, res, next) {
     // Getting Id from the parameter
     const { url } = req.params;
-
+    const { userId } = req.body;
     try {
 
         // Fetch the blog post details
@@ -493,8 +493,14 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
             return next(new AppError("This Post not found", 404));
         }
 
+        let isLiked = false;
+        // fetch if already liked
+        // const userId = mongoose.Types.ObjectId.createFromHexString(postDetails._id);
+        let likeinfo = null;
+        if(userId) likeinfo = await Like.findOne({ blog: postDetails[0]._id, user: userId });
+        if (likeinfo) isLiked = true;
+
         // Convert the id from hex string to ObjectId
-        // const objectId = mongoose.Types.ObjectId.createFromHexString(postDetails._id);
 
         // Fetch the comments for the post
         const comments = await Comment.aggregate([
@@ -517,6 +523,7 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
                 },
             },
         ]);
+        postDetails[0].isLiked = isLiked;
         // Send the response with post details and comments
         res.status(200).json({
             success: true,
