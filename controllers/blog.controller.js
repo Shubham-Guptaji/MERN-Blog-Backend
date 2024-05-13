@@ -477,6 +477,8 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
                         username: 1,
                         firstName: 1,
                         lastName: 1,
+                        followers: 1,
+                        avatar: 1,
                         bio: 1,
                     },
                     seoKeywords: 1,

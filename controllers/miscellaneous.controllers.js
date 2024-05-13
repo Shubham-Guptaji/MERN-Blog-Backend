@@ -114,6 +114,54 @@ export const DeleteContact = asyncHandler(async function (req, res, next) {
 })
 
 /**
+ * @IsFollowing
+ * @Route {{server}}/isfollowing
+ * @Method post
+ * @Access private(logged in users)
+ * @ReqData authId
+ */
+
+export const IsFollowing = asyncHandler(async function (req, res, next) {
+  const { authId } = req.body;
+  // Check if author Id is present in the request body
+  if (!authId ) {
+    return next(new AppError("Author Id is required.", 404));
+  }
+
+  try {
+    // Check if user is already following the blogger or not
+    const [author, followInfo] = await Promise.all([
+      User.findById(authId),
+      Follower.findOne({ author: authId, user: req.user.id })
+    ]);
+
+    // Check if author exists and is not closed or blocked
+    if (!author || author.isClosed || author.isBlocked) {
+      return next(new AppError("Invalid Author", 404));
+    }
+    let isFollowing = false;
+    let data = {};
+    // Check if user is already following the author or not
+    if (followInfo) {
+      isFollowing = true;
+      data.id = followInfo._id;
+    }
+    data.isFollowing = isFollowing;
+    // Send a success response
+    res.status(200).json({
+      success: true,
+      message: "Following",
+      data,
+    });
+
+  } catch (error) {
+    console.log(error);
+    return next(new AppError("Some Error occurred! Try again later ", 500));
+  }
+});
+
+
+/**
  * @FollowUser
  * @Route {{server}}/follower/follow
  * @Method post
@@ -181,7 +229,8 @@ export const followUser = asyncHandler(async function (req, res, next) {
     // Send a success response
     res.status(200).json({
       success: true,
-      message: "Followed successfully"
+      message: "Followed successfully",
+      id: follow._id
     });
 
   } catch (error) {
