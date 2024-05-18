@@ -502,6 +502,12 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
         if(userId) likeinfo = await Like.findOne({ blog: postDetails[0]._id, user: userId });
         if (likeinfo) isLiked = true;
 
+        // Fetch the 8 most recent posts before the current post
+        const recentPosts = await Blog.find({ createdAt: { $lt: postDetails[0].createdAt }, isPublished: true })
+            .sort({ createdAt: -1 })
+            .limit(8)
+            .select('_id url metaDescription public_image title');
+
         // Convert the id from hex string to ObjectId
 
         // Fetch the comments for the post
@@ -531,6 +537,7 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
             success: true,
             message: "Post fetched successfully",
             postDetails: postDetails[0],
+            recentPosts
             // comments,
         });
     } catch (error) {

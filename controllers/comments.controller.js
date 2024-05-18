@@ -180,6 +180,7 @@ export const fetchComment = async (req, res, next) => {
                     'commentAuthor.fullName': { $concat: ['$commentAuthor.firstName', ' ', '$commentAuthor.lastName'] },
                     'commentAuthor.username': '$commentAuthor.username',
                     'commentAuthor.image': '$commentAuthor.avatar',
+                    'commentAuthor.id': '$commentAuthor._id'
                 },
             },
         ]);
