@@ -1,5 +1,6 @@
 import asyncHandler from "../middlewares/async.middleware.js";
 import Blog from "../models/blog.model.js";
+import mongoose from 'mongoose';
 import Comment from "../models/comment.model.js";
 import User from "../models/user.model.js";
 import AppError from "../utils/appError.js";
@@ -120,7 +121,6 @@ export const editComment = asyncHandler(async function (req, res, next) {
 export const deleteComment = async (req, res, next) => {
     try {
         const { commentId } = req.params;
-
         // Find the comment and check if it exists
         const comment = await Comment.findById(commentId);
 
@@ -129,7 +129,7 @@ export const deleteComment = async (req, res, next) => {
         }
 
         // Check if the user is authorized to delete the comment
-        if (comment.author.toString() !== req.user.id && req.user.id !== "admin") {
+        if (comment.author.toString() !== req.user.id && req.user.role !== "admin") {
             return next(new AppError('You are not authorized to delete this comment', 403));
         }
 
@@ -152,4 +152,45 @@ export const deleteComment = async (req, res, next) => {
         return next(new AppError('Something went wrong, please try again later', 500));
     }
 };
+
+export const fetchComment = async (req, res, next) => {
+    try {
+        const {blogId} = req.params;
+        // Checking if the post exist;
+        const blog = await Blog.findOne({_id: blogId, isPublished: true});
+        if(!blog) return next(new AppError("Blog post not found.", 404))
+        // Fetch the comments for the post
+        const comments = await Comment.aggregate([
+            { $match: { blog: mongoose.Types.ObjectId.createFromHexString(blogId) } },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'author',
+                    foreignField: '_id',
+                    as: 'commentAuthor',
+                },
+            },
+            { $addFields: { commentAuthor: { $arrayElemAt: ['$commentAuthor', 0] } } },
+            { $sort: {createdAt : -1}},
+            {
+                $project: {
+                    _id: 1,
+                    content: 1,
+                    createdAt: 1,
+                    'commentAuthor.fullName': { $concat: ['$commentAuthor.firstName', ' ', '$commentAuthor.lastName'] },
+                    'commentAuthor.username': '$commentAuthor.username',
+                    'commentAuthor.image': '$commentAuthor.avatar',
+                },
+            },
+        ]);
+        res.json({
+            success: true,
+            message: "Comments fetched successfully",
+            comments: comments ? comments : [] // If no comments, return an empty array
+
+        })
+    } catch (error) {
+        return next(new AppError('Comments could not be fetched properly.', 500));
+    }
+}
 

@@ -505,33 +505,33 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
         // Convert the id from hex string to ObjectId
 
         // Fetch the comments for the post
-        const comments = await Comment.aggregate([
-            { $match: { blog: postDetails._id } },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'author',
-                    foreignField: '_id',
-                    as: 'commentAuthor',
-                },
-            },
-            { $addFields: { commentAuthor: { $arrayElemAt: ['$commentAuthor', 0] } } },
-            {
-                $project: {
-                    _id: 1,
-                    content: 1,
-                    createdAt: 1,
-                    'commentAuthor.fullName': { $concat: ['$commentAuthor.firstName', ' ', '$commentAuthor.lastName'] },
-                },
-            },
-        ]);
+        // const comments = await Comment.aggregate([
+        //     { $match: { blog: postDetails._id } },
+        //     {
+        //         $lookup: {
+        //             from: 'users',
+        //             localField: 'author',
+        //             foreignField: '_id',
+        //             as: 'commentAuthor',
+        //         },
+        //     },
+        //     { $addFields: { commentAuthor: { $arrayElemAt: ['$commentAuthor', 0] } } },
+        //     {
+        //         $project: {
+        //             _id: 1,
+        //             content: 1,
+        //             createdAt: 1,
+        //             'commentAuthor.fullName': { $concat: ['$commentAuthor.firstName', ' ', '$commentAuthor.lastName'] },
+        //         },
+        //     },
+        // ]);
         postDetails[0].isLiked = isLiked;
         // Send the response with post details and comments
         res.status(200).json({
             success: true,
             message: "Post fetched successfully",
             postDetails: postDetails[0],
-            comments,
+            // comments,
         });
     } catch (error) {
         return next(new AppError("Invalid blog ID", 400));
