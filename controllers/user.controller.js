@@ -12,6 +12,7 @@ import Follower from "../models/follower.model.js";
 import Blog from "../models/blog.model.js";
 import Comment from "../models/comment.model.js";
 import Resourcefile from "../models/resources.model.js";
+import mongoose from "mongoose";
 
 const CookieOptions = {
     secure: process.env.NODE_ENV === "production" ? true : false,
@@ -41,6 +42,24 @@ const generateAccessAndRefreshTokens = async (userId) => {
     } catch (error) {
         throw new AppError(error?.message || "Something went wront while generating tokens", error?.status || 500);
     }
+}
+
+const getWeeklyPartitions = (numberOfWeeks = 8) => {
+    const today = new Date();
+    const weeks = [];
+    // Calculate start date for the last 7 weeks (considering today)
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - (today.getDay() || 7) + 1 - numberOfWeeks * 7);
+
+    while (startOfWeek < today) {
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+        weeks.push({ start: new Date(startOfWeek), end: new Date(endOfWeek) });
+
+        startOfWeek.setDate(startOfWeek.getDate() + 7);
+    }
+    return weeks;
 }
 
 
@@ -313,21 +332,21 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
 
 
         // Finding the User in Database by username and if found then compare password
-    const user = await User.findById(decodedToken.id);
+        const user = await User.findById(decodedToken.id);
 
-    // Checking if the user has been blocked by admin
-    if (user.isBlocked) {
-        return next(
-            new AppError(`Your account has been blocked. Please contact support`, 403)
-        );
-    }
+        // Checking if the user has been blocked by admin
+        if (user.isBlocked) {
+            return next(
+                new AppError(`Your account has been blocked. Please contact support`, 403)
+            );
+        }
 
-    // Checking if the user's account is closed, then open it again
-    if (user.isClosed) {
-        user.isClosed = false;
-        await user.save();
-        user.info = "Account reopened successfully.";
-    }
+        // Checking if the user's account is closed, then open it again
+        if (user.isClosed) {
+            user.isClosed = false;
+            await user.save();
+            user.info = "Account reopened successfully.";
+        }
 
         // Returning the response
         return res
@@ -595,6 +614,29 @@ export const userProfile = asyncHandler(async function (req, res, next) {
     ];
 
     // If the requesting user is not the same as the requested user and not an admin, filter unpublished posts
+
+    pipeline.push(
+        {
+            $set: {
+                publishedPosts: {
+                    $filter: {
+                        input: "$blogPosts",
+                        as: "mypost",
+                        cond: { $eq: ["$$mypost.isPublished", true] }
+                    }
+                }
+            }
+        },
+        {
+            $set: {
+                postPublished: {
+                    $size: "$publishedPosts"
+                }
+            }
+        }
+    );
+
+
     if (req.user.username !== username && req.user.role !== "admin") {
         pipeline.push(
             {
@@ -620,7 +662,16 @@ export const userProfile = asyncHandler(async function (req, res, next) {
 
     // Add projection stage to limit the number of returned posts to 20
     pipeline.push(
-
+        {
+            $set: {
+                blogPosts: {
+                    $sortArray: {
+                        input: "$blogPosts",
+                        sortBy: { createdAt: -1 }
+                    }
+                }
+            }
+        },
         {
             $project: {
                 username: 1,
@@ -632,8 +683,12 @@ export const userProfile = asyncHandler(async function (req, res, next) {
                 role: 1,
                 isClosed: 1,
                 isBlocked: 1,
+                postPublished: 1,
                 createdAt: 1,
                 followers: 1,
+                following: 1,
+                likes: 1,
+                comments: 1,
                 isVerified: 1,
                 blogPosts: { $slice: ["$blogPosts", skip, limit] },
                 totalPosts: 1,
@@ -701,6 +756,47 @@ export const userProfile = asyncHandler(async function (req, res, next) {
         }
     });
 });
+
+/**
+ * @authChartData
+ * @Route {{server}}/user/profile/chartdata
+ * @Method get
+ * @Access private ( logged in users only )
+ */
+
+export const authChartData = asyncHandler(async function (req, res, next) {
+    try {
+        const authorId = req.user.id;
+        const weeks = getWeeklyPartitions();
+
+        const likesData = [];
+        const followersData = [];
+        for (const week of weeks) {
+            const likesCount = await Like.countDocuments({
+                author: mongoose.Types.ObjectId.createFromHexString(authorId),
+                createdAt: { $gt: week.start, $lte: week.end },
+            });
+
+            const followersCount = await Follower.countDocuments({
+                author: mongoose.Types.ObjectId.createFromHexString(authorId),
+                createdAt: { $gte: week.start, $lt: week.end },
+            });
+
+            likesData.push({ week: week.end, count: likesCount });
+            followersData.push({ week: week.end, count: followersCount });
+        }
+        let chartData = { likesData, followersData }
+        
+        res.status(200).json({
+            success: true,
+            message: "Chart Data fetched successfully",
+            chartData
+        })
+    } catch (err) {
+        return next(new AppError("Some Error Occurred", 500));
+    }
+});
+
 
 
 /**
@@ -1033,8 +1129,8 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
         return next(new AppError("Invalid user id or user does not exist", 400));
     }
 
-    if(email) {
-        if(!user.isVerified) user.email = email;
+    if (email) {
+        if (!user.isVerified) user.email = email;
         else return next(new AppError("Email can not be changed."))
     }
     if (firstName) user.firstName = firstName;

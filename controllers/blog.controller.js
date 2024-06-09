@@ -646,13 +646,11 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
 
 export const DeletePost = asyncHandler(async function (req, res, next) {
     const { id } = req.params;
-    const { authorId } = req.body;
 
-    if (req.user.id !== authorId && req.user.role !== "admin") {
+    const post = await Blog.findById(id);
+    if (req.user.id !== post.author.toString() && req.user.role !== "admin") {
         return next(new AppError('You do not have permission to perform this action', 403));
     }
-
-    const post = await Blog.findOne({ _id: id, author: authorId })
 
     // Check if the post exists
     if (!post) return next(new AppError("Your Post not found", 404));
@@ -665,7 +663,8 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
     } catch (error) {
         return next(new AppError("Error deleting post resources", 500));
     }
-
+    const postlikes = post.likes;
+    const postcomments = post.comments.length;
     // Delete the post from the database
     await Blog.findByIdAndDelete(id);
     await Comment.deleteMany({ blog: id });
@@ -674,7 +673,9 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
 
     // Remove the post ID from the user's blogs array
     await User.findByIdAndUpdate(req.user.id, {
-        $pull: { blogs: post._id }
+        $pull: { blogs: post._id },
+        $inc: { likes: -postlikes },
+        $inc: { comments: -postcomments }
     }).exec();
 
     // Respond with success message and post details

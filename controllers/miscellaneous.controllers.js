@@ -216,7 +216,6 @@ export const followUser = asyncHandler(async function (req, res, next) {
         user: req.user.id
       });
     }
-
     // Check if follow document was created successfully
     if (!follow) {
       return next(new AppError("Your request couldn't be processed", 500));
@@ -225,6 +224,7 @@ export const followUser = asyncHandler(async function (req, res, next) {
     // Increment followers count for the followed author directly
     author.followers += 1;
     await author.save();
+    await User.findByIdAndUpdate(req.user.id, { $inc: { following: 1 } }, { new: true });
 
     // Send a success response
     res.status(200).json({
@@ -464,6 +464,7 @@ export const unfollowUser = asyncHandler(async function (req, res, next) {
   // Decrement the followers count for the author
   const userUpdate = await User.findByIdAndUpdate(follow.author, { $inc: { followers: -1 } });
   await userUpdate.save();
+  await User.findByIdAndUpdate(req.user.id, { $inc: { following: -1 } }, { new: true });
 
   // Return the success response
   res.status(200).json({
@@ -534,7 +535,7 @@ export const LikePost = asyncHandler(async function (req, res, next) {
     // If the blog is not found, return an error
     return next(new AppError('Blog not found!', 404));
   }
-
+  await User.findByIdAndUpdate(blog.author, { $inc: { likes: 1 } }, { new: true });
   // Create a new like
   await Like.create({ blog: postId, user: req.user.id, author: blog.author });
 
@@ -574,9 +575,14 @@ export const UnLikePost = asyncHandler(async function (req, res, next) {
     console.log(err);
   });
 
+  if (!blog) {
+    // If the blog is not found, return an error
+    return next(new AppError('Blog not found!', 404));
+  }
+
   // Delete the like information from the database
   await Like.findByIdAndDelete(likeInfo._id);
-
+  await User.findByIdAndUpdate(blog.author, { $inc: { likes: -1 } }, {new: true})
   // Return the updated info to the client side
   res.status(200).json({
     status: true,

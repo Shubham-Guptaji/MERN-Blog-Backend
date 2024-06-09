@@ -62,6 +62,18 @@ const userSchema = new Schema({
     type: Number,
     default: 0
   },
+  likes: {
+    type: Number,
+    default: 0
+  },
+  following: {
+    type: Number,
+    default: 0
+  },
+  comments: {
+    type: Number,
+    default: 0
+  },
   resetToken: String,
   resetTokenExpiry: Date,
   verifyToken: String,

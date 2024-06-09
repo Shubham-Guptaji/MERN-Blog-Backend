@@ -56,6 +56,7 @@ export const CreateComment = asyncHandler(async function (req, res, next) {
     // Save the comment and the blog
     await mycomment.save();
     await commentToBlog.save();
+    await User.findByIdAndUpdate(commentToBlog.author, { $inc: { comments: 1 } }, { new: true });
 
     // Send success response
     res.status(201).json({
@@ -134,6 +135,7 @@ export const deleteComment = async (req, res, next) => {
         }
 
         // Delete the comment and remove its reference from the associated blog
+        commentAuthor = comment.blogAuthor;
         await Promise.all([
             comment.deleteOne(),
             Blog.updateOne(
@@ -141,6 +143,8 @@ export const deleteComment = async (req, res, next) => {
                 { $pull: { comments: commentId } }
             )
         ]);
+        
+        await User.findByIdAndUpdate(commentAuthor, { $inc: { comments: -1 } }, { new: true });
 
         // Response for comment
         res.status(200).json({
