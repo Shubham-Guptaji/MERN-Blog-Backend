@@ -49,7 +49,8 @@ const getWeeklyPartitions = (numberOfWeeks = 8) => {
     const weeks = [];
     // Calculate start date for the last 7 weeks (considering today)
     const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - (today.getDay() || 7) + 1 - numberOfWeeks * 7);
+    // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) + 1 - numberOfWeeks * 7);
+    startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7);
 
     while (startOfWeek < today) {
         const endOfWeek = new Date(startOfWeek);
@@ -766,22 +767,20 @@ export const userProfile = asyncHandler(async function (req, res, next) {
 
 export const authChartData = asyncHandler(async function (req, res, next) {
     try {
-        const authorId = req.user.id;
         const weeks = getWeeklyPartitions();
-
+        const author = mongoose.Types.ObjectId.createFromHexString(req.user.id);
         const likesData = [];
         const followersData = [];
         for (const week of weeks) {
             const likesCount = await Like.countDocuments({
-                author: mongoose.Types.ObjectId.createFromHexString(authorId),
+                author,
                 createdAt: { $gt: week.start, $lte: week.end },
             });
 
             const followersCount = await Follower.countDocuments({
-                author: mongoose.Types.ObjectId.createFromHexString(authorId),
-                createdAt: { $gte: week.start, $lt: week.end },
+                author,
+                createdAt: { $gt: week.start, $lte: week.end },
             });
-
             likesData.push({ week: week.end, count: likesCount });
             followersData.push({ week: week.end, count: followersCount });
         }

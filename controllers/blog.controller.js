@@ -556,6 +556,7 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
 
 export const UpdatePost = asyncHandler(async function (req, res, next) {
     // Getting post id from parameter
+    console.log(req.body);
     const { id } = req.params;
     const { authorId } = req.body;
 
@@ -565,7 +566,7 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
         return next(new AppError('You do not have permission to perform this action', 403));
     }
 
-    if (!(req.body.title || req.body.content || req.body.seoKeywords || req.body.metaDescription || req.body.tags || req.file)) {
+    if (!(req.body.title || req.body.content || req.body.seoKeywords || req.body.metaDescription || req.body.tags )) {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
         return next(new AppError("Atleast one information for updation  is required.", 400));
     }
