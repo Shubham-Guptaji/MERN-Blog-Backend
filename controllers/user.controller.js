@@ -50,8 +50,8 @@ const getWeeklyPartitions = (numberOfWeeks = 8) => {
     // Calculate start date for the last 7 weeks (considering today)
     const startOfWeek = new Date(today);
     // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) + 1 - numberOfWeeks * 7);
-    startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7);
-
+    // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7);
+    startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7 - 1);
     while (startOfWeek < today) {
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 7);
@@ -752,6 +752,7 @@ export const userProfile = asyncHandler(async function (req, res, next) {
         isAuthor: isAuthor ? true : undefined,
         areMore: userDetails[0].blogPosts.length > 20 ? true : false,
         userDetails: {
+            skip: skip,
             ...userDetails[0],
             blogPosts: blogPostsToSend
         }
@@ -971,64 +972,94 @@ export const VerifyTokenEmail = asyncHandler(async function (req, res, next) {
     await user.save();
 
     // Making content for email
-    const verifyAccountUrl = `${process.env.FRONTEND_URL}/api/v1/user/profile/${user.username}/verify/${emailtoken}`;
-    const subject = "Verify account in Alcodemy Blog";
-    const message = `
-    <html>
-  <head>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-      }
+    const verifyAccountUrl = `${process.env.FRONTEND_URL}/user/${user.username}/account/verify/${emailtoken}`;
+const subject = "Verify account in Alcodemy Blog";
+const message = `
+<html>
+<head>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
 
-      .container {
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 20px;
-        background-color: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 5px;
-      }
+  .container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+  }
 
-      .title {
-        font-size: 24px;
-        margin-bottom: 20px;
-      }
+  .hero {
+    text-align: center;
+    padding: 20px 0;
+  }
 
-      .message {
-        font-size: 16px;
-        margin-bottom: 20px;
-      }
+  .hero img {
+    width: 150px; /* Adjust width as needed */
+  }
 
-      .link {
-        color: #007bff;
-        text-decoration: none;
-      }
+  .title {
+    font-size: 24px;
+    margin-bottom: 20px;
+  }
 
-      .link:hover {
-        text-decoration: underline;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="title">Verify Account in Alcodemy Blog</div>
-      <div class="message">
-        You can verify your account by clicking the button below. If the button
-        doesn't work, copy and paste the URL into your web browser.
-      </div>
-      <a href="${verifyAccountUrl}" class="link">Verify Account</a>
-      <br>
-      <p> URL : ${verifyAccountUrl} </p>
-      <div class="message">
-        If you did not request this verification token, please ignore this email.
-      </div>
+  .message {
+    font-size: 16px;
+    margin-bottom: 13px;
+  }
+
+  .button {
+    background-color: #007bff; /* Replace with primary color */
+    color: white!important;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    margin-bottom: 13px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .button:hover {
+    background-color: #0069d9; /* Replace with darker shade */
+  }
+
+  .link {
+    color: #007bff;
+    text-decoration: none;
+  }
+
+  .link:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <img src="https://blog.alcodemy.tech/Alcodemy.png" alt="Alcodemy Blog Logo" />
+      <h2>Welcome to Alcodemy Blog!</h2>
     </div>
-  </body>
+    <div class="title">Verify Your Account</div><br>
+    <div class="message">
+      You can verify your account by clicking the button below.
+    </div><br>
+    <a href="${verifyAccountUrl}" class="button">Verify Account</a>
+    <br><br>
+    If the button above doesn't work, copy and paste the below URL into your web browser.
+    <br>
+    <p> <strong>URL :</strong> ${verifyAccountUrl} </p><br>
+    <div class="message">
+      If you did not request this verification token, please ignore this email.
+    </div>
+  </div>
+</body>
 </html>
 `;
+
 
     try {
         // Sending the token to the email for verification
@@ -1037,7 +1068,7 @@ export const VerifyTokenEmail = asyncHandler(async function (req, res, next) {
         // Sending response 
         res.status(200).json({
             success: true,
-            message: `Verify token has been sent to ${user.email} successfully`,
+            message: `Verification token has been sent to your registered Email address, Click on it to verify.`,
         });
     } catch (error) {
 
@@ -1077,9 +1108,9 @@ export const VerifyAccount = asyncHandler(async function (req, res, next) {
         .digest("hex");
 
     // Find user with matching verify token and non-expired verify token expiry
-    const user = await User.findOne({
+    let user = await User.findOne({
         verifyToken: verifyPassToken,
-        verifyTokenExpiry: { $gt: Date.now() },
+        
     });
 
     // Check if user exist with the token or not
@@ -1087,8 +1118,18 @@ export const VerifyAccount = asyncHandler(async function (req, res, next) {
         return next(new AppError("Invalid Token", 404));
     }
 
+    let userinfo = await User.findOne({
+        verifyToken: verifyPassToken,
+        verifyTokenExpiry: { $gt: Date.now() },
+    })
+
+    // Check if user exist with the token or not
+    if (!userinfo) {
+        return next(new AppError("This Verification Mail has Expired. Please generate new verification mail from your dashboard.", 404));
+    }
+
     // Checking if the username of user is same as in request params
-    if (user.username !== username) return next(new AppError("Eithor the token or username is invalid", 400));
+    if (user.username !== username) return next(new AppError("Invalid Username", 400));
 
     // Making user verified
     user.isVerified = true;
