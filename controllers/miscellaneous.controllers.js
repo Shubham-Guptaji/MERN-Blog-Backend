@@ -276,13 +276,31 @@ export const userFollowers = asyncHandler(async function (req, res, next) {
       },
     },
     {
-      $project: {
-        blogId: '$blog',
-        userId: '$user_info._id',
-        username: '$user_info.username',
-        fullName: { $concat: ['$user_info.firstName', ' ', '$user_info.lastName'] },
-        joinDate: '$user_info.createdAt'
+      $lookup: {
+        from: "blogs",
+        localField: "blog",
+        foreignField: "_id",
+        as: "blog_info"
       }
+    },
+    {
+      $unwind: '$blog_info'
+    },
+    {
+      $project: {
+        // blogId: '$blog',
+        // userId: '$user_info._id',
+        // blog_name: '$blog_info.title',
+        blog_url: '$blog_info.url',
+        avatar: '$user_info.avatar.secure_url',
+        username: '$user_info.username',
+        // fullName: { $concat: ['$user_info.firstName', ' ', '$user_info.lastName'] },
+        fullName: '$user_info.firstName',
+        createdAt: 1
+      }
+    },
+    {
+      $sort: {createdAt: -1}
     },
     {
       $skip: skip
@@ -369,6 +387,18 @@ export const UserFollowing = asyncHandler(async function (req, res, next) {
      * Limit the number of documents to 21
      */
     { $limit: limit },
+    
+    {
+      $lookup: {
+        from: "blogs",
+        localField: "blog",
+        foreignField: "_id",
+        as: "blog_info"
+      }
+    },
+    {
+      $unwind: '$blog_info'
+    },
 
     /**
      * Project only the required fields
@@ -376,34 +406,42 @@ export const UserFollowing = asyncHandler(async function (req, res, next) {
     {
       $project: {
         _id: 1,
-        author: {
-          _id: 1,
-          username: 1,
-          firstName: 1,
-          lastName: 1,
-        },
+        // author: {
+        //   _id: 1,
+        //   username: 1,
+        //   firstName: 1,
+        //   lastName: 1,
+        // },
+        blog_url: '$blog_info.url',
+        avatar: '$author.avatar.secure_url',
+        username: '$author.username',
+        fullName: "$author.firstName",
+        createdAt: 1
       },
+    },
+    {
+      $sort: {createdAt: -1}
     },
 
     /**
      * Group the documents by the Follower document's id and push the unwound author documents into an array
      */
-    {
-      $group: {
-        _id: "$_id",
-        author: { $push: "$author" },
-      },
-    },
+    // {
+    //   $group: {
+    //     _id: "$_id",
+    //     author: { $push: "$author" },
+    //   },
+    // },
 
-    /**
-     * Project only the required fields
-     */
-    {
-      $project: {
-        _id: 1,
-        author: 1,
-      },
-    },
+    // /**
+    //  * Project only the required fields
+    //  */
+    // {
+    //   $project: {
+    //     _id: 1,
+    //     author: 1,
+    //   },
+    // },
   ]);
 
   if (!Authors || !Authors.length) {
