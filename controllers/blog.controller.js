@@ -556,7 +556,6 @@ export const getBlogpost = asyncHandler(async function (req, res, next) {
 
 export const UpdatePost = asyncHandler(async function (req, res, next) {
     // Getting post id from parameter
-    console.log(req.body);
     const { id } = req.params;
     const { authorId } = req.body;
 

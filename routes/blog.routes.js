@@ -11,12 +11,12 @@ router.post("/create", rate(15*60*1000, 8), isLoggedIn, isVerified, upload.singl
 router.get("/", rate(5*60*1000, 30), getHomeBlogs);
 router.get("/posts", rate(5*60*1000, 20), AllPosts);
 router.post("/tag", rate(5*60*1000, 30), tagBlog);
-router.patch("/publish/:id", rate(5*60*1000, 10), isLoggedIn, PublishBlog);
+router.patch("/publish/:id", rate(5*60*1000, 10), isLoggedIn, isVerified, PublishBlog);
 router.post("/:url", rate(5*60*1000, 20), getBlogpost);
 router
     .route("/:id")
-        .put(rate(15*60*1000, 10), isLoggedIn, upload.single("postImage"), UpdatePost)
-        .patch(rate(15*60*1000, 20), isLoggedIn, unPublishBlog)
-        .delete(rate(15*60*1000, 12), isLoggedIn, DeletePost);
+        .put(rate(15*60*1000, 10), isLoggedIn, isVerified, upload.single("postImage"), UpdatePost)
+        .patch(rate(15*60*1000, 20), isLoggedIn, isVerified, unPublishBlog)
+        .delete(rate(15*60*1000, 12), isLoggedIn, isVerified, DeletePost);
 
 export default router;

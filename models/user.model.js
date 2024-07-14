@@ -47,6 +47,10 @@ const userSchema = new Schema({
     public_id : String,
     secure_url : String
   },
+  bgImage: {
+    public_id: String,
+    secure_url: String
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],

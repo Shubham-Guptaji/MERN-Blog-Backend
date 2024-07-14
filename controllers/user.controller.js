@@ -51,7 +51,7 @@ const getWeeklyPartitions = (numberOfWeeks = 8) => {
     const startOfWeek = new Date(today);
     // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) + 1 - numberOfWeeks * 7);
     // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7);
-    startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7 - 1);
+    startOfWeek.setDate(today.getDate() - (today.getDay() || 6) - (numberOfWeeks * 7) - 1);
     while (startOfWeek < today) {
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 7);
@@ -689,6 +689,7 @@ export const userProfile = asyncHandler(async function (req, res, next) {
                 followers: 1,
                 following: 1,
                 likes: 1,
+                bgImage: 1,
                 comments: 1,
                 isVerified: 1,
                 blogPosts: { $slice: ["$blogPosts", skip, limit] },
@@ -1158,7 +1159,7 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
     const { id } = req.user;
 
     // Check if at least one field is provided for update
-    if (!firstName && !lastName && !bio && !req.file && !email) {
+    if (!firstName && !lastName && !bio && !req.file && !email ) {
         return next(new AppError("At least one field is required for update.", 400));
     }
 
@@ -1170,8 +1171,11 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
     }
 
     if (email) {
-        if (!user.isVerified) user.email = email;
-        else return next(new AppError("Email can not be changed."))
+        // if (!user.isVerified) user.email = email;
+        // else return next(new AppError("Email can not be changed."))
+
+        user.email = email;
+        user.isVerified = false;
     }
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
@@ -1217,19 +1221,97 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
     // Remove password field from user object before sending it as a response
     user.password = undefined;
 
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
+
     res.status(200).json({
         success: true,
         message: "Profile updated successfully",
-        updatedUser,
+        user: {
+            id: updatedUser.id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            firstName: updatedUser.firstName,
+            lastName: updatedUser.lastName,
+            bio: updatedUser.bio,
+            avatar: updatedUser.avatar,
+            role: updatedUser.role,
+            isVerified: updatedUser.isVerified,
+            tokens: { accessToken, refreshToken }
+        }
     });
 });
+
+/**
+ * @UpdateBackgroundImage
+ * @Route {{server}}/user/backgroundImage
+ * @Method patch
+ * @Access private( Logged in users only)
+ * @ReqData file
+ */
+
+export const updateBgImage = asyncHandler(async function (req, res, next) {
+    const { id } = req.user;
+
+    if (!req.file) {
+        return next(new AppError("At least one field is required for update.", 400));
+    }
+
+    const user = await User.findById(id);
+
+    // Check if user exists
+    if (!user) {
+        return next(new AppError("Invalid user id or user does not exist", 400));
+    }
+
+    // Handle avatar upload
+    if (req.file) {
+        try {
+            // Remove the old image from cloudinary
+            if (user.bgImage) {
+                await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+            }
+            // uploading new avatar
+            const result = await cloudinary.v2.uploader.upload(req.file.path, {
+                folder: "blog/user/bgImage",
+                resource_type: "image",
+                width: 1920,
+                height: 1080,
+                // gravity: "faces",
+                crop: "fill",
+            });
+
+            if (result) {
+                user.bgImage.public_id = result.public_id;
+                user.bgImage.secure_url = result.secure_url;
+            }
+
+            fs.rm(`uploads/${req.file.filename}`);
+        } catch (error) {
+            console.log("not uploaded");
+            for (const file of await fs.readdir("uploads/")) {
+                if (file == ".gitkeep") continue;
+                await fs.unlink(path.join("uploads/", file));
+            }
+            return next(
+                new AppError(JSON.stringify(error) || "File not uploaded, please try again", 400)
+            );
+        }
+    }
+
+    await user.save();
+
+    res.status(200).json({
+        success: true,
+        message: "Background Image has been updated"
+        });
+})
 
 
 /**
  * @DeleteUser
  * @Route {{server}}/user/profile/:id
  * @Method delete
- * @Access private (only admin)
+ * @Access private (only logged in users);
  * @ReqData id
  */
 
@@ -1271,11 +1353,13 @@ export const DeleteUser = asyncHandler(async function (req, res, next) {
     }
 
     // Delete the post from the database
-    Blog.deleteMany({ author: id });
-    Like.deleteMany({ author: id });
-    Follower.deleteMany({ author: id });
-    Comment.deleteMany({ blogAuthor: id });
-    Resourcefile.deleteMany({ user: id });
+    await Promise.all([
+        Blog.deleteMany({ author: id }),
+        Like.deleteMany({ author: id }),
+        Follower.deleteMany({ author: id }),
+        Comment.deleteMany({ blogAuthor: id }),
+        Resourcefile.deleteMany({ user: id })
+      ]);
 
     // Remove the post ID from the user's blogs array
     await User.findByIdAndDelete(id);
