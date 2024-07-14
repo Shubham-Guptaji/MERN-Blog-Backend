@@ -275,23 +275,23 @@ export const userFollowers = asyncHandler(async function (req, res, next) {
         "user_info.isBlocked": false,
       },
     },
-    {
-      $lookup: {
-        from: "blogs",
-        localField: "blog",
-        foreignField: "_id",
-        as: "blog_info"
-      }
-    },
-    {
-      $unwind: '$blog_info'
-    },
+    // {
+    //   $lookup: {
+    //     from: "blogs",
+    //     localField: "blog",
+    //     foreignField: "_id",
+    //     as: "blog_info"
+    //   }
+    // },
+    // {
+    //   $unwind: '$blog_info'
+    // },
     {
       $project: {
         // blogId: '$blog',
         // userId: '$user_info._id',
         // blog_name: '$blog_info.title',
-        blog_url: '$blog_info.url',
+        // blog_url: '$blog_info.url',
         avatar: '$user_info.avatar.secure_url',
         username: '$user_info.username',
         // fullName: { $concat: ['$user_info.firstName', ' ', '$user_info.lastName'] },
@@ -388,17 +388,17 @@ export const UserFollowing = asyncHandler(async function (req, res, next) {
      */
     { $limit: limit },
     
-    {
-      $lookup: {
-        from: "blogs",
-        localField: "blog",
-        foreignField: "_id",
-        as: "blog_info"
-      }
-    },
-    {
-      $unwind: '$blog_info'
-    },
+    // {
+    //   $lookup: {
+    //     from: "blogs",
+    //     localField: "blog",
+    //     foreignField: "_id",
+    //     as: "blog_info"
+    //   }
+    // },
+    // {
+    //   $unwind: '$blog_info'
+    // },
 
     /**
      * Project only the required fields
@@ -412,7 +412,7 @@ export const UserFollowing = asyncHandler(async function (req, res, next) {
         //   firstName: 1,
         //   lastName: 1,
         // },
-        blog_url: '$blog_info.url',
+        // blog_url: '$blog_info.url',
         avatar: '$author.avatar.secure_url',
         username: '$author.username',
         fullName: "$author.firstName",
@@ -423,25 +423,6 @@ export const UserFollowing = asyncHandler(async function (req, res, next) {
       $sort: {createdAt: -1}
     },
 
-    /**
-     * Group the documents by the Follower document's id and push the unwound author documents into an array
-     */
-    // {
-    //   $group: {
-    //     _id: "$_id",
-    //     author: { $push: "$author" },
-    //   },
-    // },
-
-    // /**
-    //  * Project only the required fields
-    //  */
-    // {
-    //   $project: {
-    //     _id: 1,
-    //     author: 1,
-    //   },
-    // },
   ]);
 
   if (!Authors || !Authors.length) {

@@ -583,7 +583,7 @@ export const changePassword = asyncHandler(async function (req, res, next) {
 /**
  * @UserProfile
  * @Route {{server}}/user/profile/:username
- * @Method get
+ * @Method post
  * @Access private( Logged in users only )
  * @ReqData username
  */
@@ -728,7 +728,7 @@ export const userProfile = asyncHandler(async function (req, res, next) {
     if (req.user.username !== username && req.user.role !== "admin") {
         isAuthor = false;
         //  Remove user information from response if user is not the author and not an admin
-        let properties = ["email", "createdAt", "isBlocked", "isClosed", "isVerified", "role"];
+        let properties = [ "createdAt", "isBlocked", "isClosed", "isVerified", "role"];
         for (let property of properties) {
             delete userDetails[0][property]
         }
@@ -1169,8 +1169,8 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
     if (!user) {
         return next(new AppError("Invalid user id or user does not exist", 400));
     }
-
-    if (email) {
+    let emailreg = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/;
+    if (email && user.email !== email && emailreg.test(email)) {
         // if (!user.isVerified) user.email = email;
         // else return next(new AppError("Email can not be changed."))
 
@@ -1383,6 +1383,7 @@ export const AllUsers = asyncHandler(async function (req, res, next) {
     const skip = Number(req.query.skip) || 0;
     const limit = 21;
     const users = await User.find()
+        .select("username firstName lastName avatar role likes createdAt")
         .sort([['createdAt', -1]])
         .skip(skip)
         .limit(limit)
@@ -1391,6 +1392,7 @@ export const AllUsers = asyncHandler(async function (req, res, next) {
         success: true,
         message: "Users fetched successfully",
         count: await User.countDocuments(),
-        data: users
+        data: users.slice(0, 20),
+        areMore: users.length > 20
     })
 })
