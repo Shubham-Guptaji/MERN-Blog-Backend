@@ -136,7 +136,7 @@ export const IsFollowing = asyncHandler(async function (req, res, next) {
     ]);
 
     // Check if author exists and is not closed or blocked
-    if (!author || author.isClosed || author.isBlocked) {
+    if ((!author || author.isClosed || author.isBlocked) && req.user.role != "admin") {
       return next(new AppError("Invalid Author", 404));
     }
     let isFollowing = false;

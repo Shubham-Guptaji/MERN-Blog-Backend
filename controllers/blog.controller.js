@@ -260,7 +260,7 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
                 $sort: { likes: -1, createdAt: -1 }, // Sort by likes (descending)
             },
             {
-                $limit: 6, // Limit to 6 documents
+                $limit: 9, // Limit to 6 documents
             },
         ]),
         User.find({ isClosed: false, isBlocked: false }, { _id: 1, username: 1, firstName: 1, lastName: 1, avatar: 1 })
