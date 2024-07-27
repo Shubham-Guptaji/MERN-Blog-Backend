@@ -145,6 +145,8 @@ export const registerUser = asyncHandler(async function (req, res, next) {
           height: 350,
           gravity: "faces",
           crop: "fill",
+          fetch_format: "auto",
+          quality: "auto",
         });
         if (result) {
           user.avatar.public_id = result.public_id;
@@ -188,6 +190,7 @@ export const registerUser = asyncHandler(async function (req, res, next) {
         success: true,
         message: "User created Successfully",
         user: {
+          id: user._id,
           username: user.username,
           email: user.email,
           firstName: user.firstName,
@@ -1414,21 +1417,53 @@ export const DeleteUser = asyncHandler(async function (req, res, next) {
   user.isBlocked = true;
   await user.save();
 
+  // Delete all resources with the specified prefix 
   try {
-    // Delete all resources with the specified prefix (folder path)
     await cloudinary.v2.api.delete_resources_by_prefix(
       `blog/posts/${user.username}`
     );
+  } catch (error) {
+    console.log(
+      `Error deleting resources in blog/posts/${user.username}: ${error.error.message}`
+    );
+  }
 
-    // Delete the folder and all resources within it
+  // Delete all resources with the specified prefix 
+  try {
+    await cloudinary.v2.api.delete_resources_by_prefix(
+      `blog/resource/${user.username}`
+    );
+  } catch (error) {
+    console.log(
+      `Error deleting resources in blog/resource/${user.username}: ${error.error.message}`
+    );
+  }
+
+
+  // Delete the folder and all resources within it
+  try {
     await cloudinary.v2.api.delete_folder(`blog/posts/${user.username}`);
   } catch (error) {
-    console.log(error.error.message);
+    console.log(
+      `Error deleting folder blog/posts/${user.username}: ${error.error.message}`
+    );
+  }
+
+  // Delete the folder and all resources within it
+  try {
+    await cloudinary.v2.api.delete_folder(`blog/resource/${user.username}`);
+  } catch (error) {
+    console.log(
+      `Error deleting folder blog/resource/${user.username}: ${error.error.message}`
+    );
   }
 
   // Remove the old image from cloudinary
   if (user.avatar.public_id) {
     await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+  }
+  if (user.bgImage.public_id) {
+    await cloudinary.v2.uploader.destroy(user.bgImage.public_id);
   }
 
   // Delete the post from the database

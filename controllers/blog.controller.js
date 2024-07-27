@@ -107,6 +107,8 @@ export const createBlog = asyncHandler(async function (req, res, next) {
             req.file.path, {
             folder: `blog/posts/${user.username}`,
             resource_type: 'image',
+            fetch_format: 'webp',
+            quality: 'auto'
         }
         )
         // Update new blog post with uploaded file details
