@@ -1,4 +1,5 @@
-import {google} from 'googleapis';
+// import {google} from 'googleapis';
+import {OAuth2Client} from 'google-auth-library';
 import { config } from "dotenv";
 config();
 import keys from "./credentials.json" assert { type: "json" };
@@ -15,14 +16,12 @@ console.log(GOOGLE_CLIENT_ID,
     CLIENT_SECRET,
     REDIRECT_URI)
 
-const oauth2Client = new google.auth.OAuth2(
-  // GOOGLE_CLIENT_ID,
-  // CLIENT_SECRET,
-  // REDIRECT_URI
-  keys.web.client_id,
-  keys.web.client_secret,
-  keys.web.redirect_uris[0]
-);
+  const oAuth2Client = new OAuth2Client(
+    keys.web.client_id,
+    keys.web.client_secret,
+    // keys.web.redirect_uris[0]
+    'postmessage'
+  );
 
 // generate a url that asks permissions for Blogger and Google Calendar scopes
 const scopes = [
@@ -31,12 +30,9 @@ const scopes = [
   'profile'
 ];
 
-const url = oauth2Client.generateAuthUrl({
-  // 'online' (default) or 'offline' (gets refresh_token)
+oAuth2Client.generateAuthUrl({
   access_type: 'offline',
-
-  // If you only need one scope, you can pass it as a string
-  scope: scopes
+  scope: scopes,
 });
 
-export default oauth2Client;
+export default oAuth2Client;

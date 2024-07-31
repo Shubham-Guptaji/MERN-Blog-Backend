@@ -14,6 +14,8 @@ import Comment from "../models/comment.model.js";
 import Resourcefile from "../models/resources.model.js";
 import mongoose from "mongoose";
 import oauth2Client from "../utils/google-auth.js";
+import oAuth2Client from "../utils/google-auth.js";
+import axios from "axios";
 
 const CookieOptions = {
   secure: process.env.NODE_ENV === "production" ? true : false,
@@ -1542,18 +1544,25 @@ export const googleAuth = asyncHandler(async (req, res, next) => {
   console.log("USER CREDENTIAL -> ", code);
 
   try {
-    const googleRes = await oauth2Client.getToken(code);
+    const googleRes = await oAuth2Client.getToken(code);
   
-  oauth2Client.setCredentials(googleRes.tokens);
+  oAuth2Client.setCredentials(googleRes.tokens);
     console.log('token', googleRes.tokens.access_token);
   const userRes = await axios.get(
       `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${googleRes.tokens.access_token}`
 );
+
+console.log('mydata', userRes.data)
+
+// const tokenInfo = await oAuth2Client.getTokenInfo(
+//   oAuth2Client.credentials.access_token
+// );
+// console.log('info', tokenInfo)
   } catch (error) {
     console.log('error occured', error);
   }
 
-  console.log(userRes.data);
+  // console.log(userRes.data.data);
   return res.json('true');
   let user = await User.findOne({ email: userRes.data.email });
  
