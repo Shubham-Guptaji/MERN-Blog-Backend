@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isAdmin, isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
 import upload from "../middlewares/multer.middleware.js";
-import { AllUsers, CloseAccount, DeleteUser, GetRegisteredUser, VerifyAccount, VerifyTokenEmail, authChartData, blockUser, changePassword, forgotPassword, loginUser, refreshAccessToken, registerUser, resetPassword, unBlockUser, updateBgImage, updateProfile, userLogOut, userProfile } from "../controllers/user.controller.js";
+import { AllUsers, CloseAccount, DeleteUser, GetRegisteredUser, VerifyAccount, VerifyTokenEmail, authChartData, blockUser, changePassword, forgotPassword, googleAuth, loginUser, refreshAccessToken, registerUser, resetPassword, unBlockUser, updateBgImage, updateProfile, userLogOut, userProfile } from "../controllers/user.controller.js";
 import rate from "../middlewares/requestLimit.js";
 
 const router = Router();
@@ -25,6 +25,8 @@ router.delete('/profile/:id', rate(60 * 60 * 1000, 35), isLoggedIn, DeleteUser);
 router.get('/profile', rate(60 * 60 * 1000, 35), isLoggedIn, isAdmin, AllUsers);
 router.get('/profile/chartdata', rate(60 * 60 * 1000, 30), isLoggedIn, authChartData);
 router.get('/profile/search', rate(60* 60 * 1000, 40), isLoggedIn, isAdmin, GetRegisteredUser);
+
+router.get('/google/callback', googleAuth);
 
 
 export default router;

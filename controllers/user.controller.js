@@ -13,6 +13,7 @@ import Blog from "../models/blog.model.js";
 import Comment from "../models/comment.model.js";
 import Resourcefile from "../models/resources.model.js";
 import mongoose from "mongoose";
+import oauth2Client from "../utils/google-auth.js";
 
 const CookieOptions = {
   secure: process.env.NODE_ENV === "production" ? true : false,
@@ -1532,4 +1533,38 @@ export const GetRegisteredUser = asyncHandler(async function (req, res, next) {
     data: users.slice(0, 20),
     areMore: users.length > 20,
   });
+});
+
+
+/* GET Google Authentication API. */
+export const googleAuth = asyncHandler(async (req, res, next) => {
+  const code = req.query.code;
+  console.log("USER CREDENTIAL -> ", code);
+
+  try {
+    const googleRes = await oauth2Client.getToken(code);
+  
+  oauth2Client.setCredentials(googleRes.tokens);
+    console.log('token', googleRes.tokens.access_token);
+  const userRes = await axios.get(
+      `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${googleRes.tokens.access_token}`
+);
+  } catch (error) {
+    console.log('error occured', error);
+  }
+
+  console.log(userRes.data);
+  return res.json('true');
+  let user = await User.findOne({ email: userRes.data.email });
+ 
+  if (!user) {
+      console.log('New User found');
+      user = await User.create({
+          name: userRes.data.name,
+          email: userRes.data.email,
+          image: userRes.data.picture,
+      });
+  }
+
+  createSendToken(user, 201, res);
 });
