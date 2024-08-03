@@ -13,7 +13,6 @@ import Blog from "../models/blog.model.js";
 import Comment from "../models/comment.model.js";
 import Resourcefile from "../models/resources.model.js";
 import mongoose from "mongoose";
-import oauth2Client from "../utils/google-auth.js";
 import oAuth2Client from "../utils/google-auth.js";
 import axios from "axios";
 
@@ -52,6 +51,23 @@ const generateAccessAndRefreshTokens = async (userId) => {
     );
   }
 };
+
+async function generateRandomUsername(length = 8) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let username = '';
+  const charactersLength = characters.length;
+
+  for (let i = 0; i < length; i++) {
+      username += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+
+  const extraCharacters = Math.floor(Math.random() * 10);
+  for (let i = 0; i < extraCharacters; i++) {
+      username += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+
+  return username;
+}
 
 const getWeeklyPartitions = (numberOfWeeks = 8) => {
   const today = new Date();
@@ -113,14 +129,24 @@ export const registerUser = asyncHandler(async function (req, res, next) {
     );
   }
 
+  // Check if a user with the provided username already exists
+  const usernameExist = await User.findOne({
+    username
+  });
+
+  if (usernameExist) {
+    if (req.file) fs.rm(`uploads/${req.file.filename}`);
+    return next(new AppError("Username Already registered.", 409));
+  }
+
   // Check if a user with the provided email already exists
   const userExist = await User.findOne({
-    $or: [{ username: username }, { email: email }],
+    email
   });
 
   if (userExist) {
     if (req.file) fs.rm(`uploads/${req.file.filename}`);
-    return next(new AppError("User Already registered.", 409));
+    return next(new AppError("Email Already registered.", 409));
   }
 
   try {
@@ -232,10 +258,15 @@ export const loginUser = asyncHandler(async function (req, res, next) {
     "+password"
   );
 
-  if (!(user && (await user.comparePassword(password)))) {
+
+  if(!user) {
+    return next( new AppError("User does not exist.", 404))
+  }
+  
+  if (!(await user.comparePassword(password))) {
     return next(
       new AppError(
-        "Username or Password do not match or user does not exist",
+        "Invalid Password",
         401
       )
     );
@@ -458,7 +489,7 @@ export const forgotPassword = asyncHandler(async function (req, res, next) {
 
   // Create email subject and message
   const subject = "Reset Password";
-  const message = `You can reset your password by clicking <a href=${resetPasswordUrl} target="_blank">Reset your password</a>.<br/><br/>If the above link does not work for some reason then copy paste this link in new tab ${resetPasswordUrl}<br/><br/> This link is valid only for 15 minutes.<br/>If you have not requested this, kindly ignore.`;
+  const message = `Hi ${user.firstName},<br /> You can reset your account password with username ${user.username} by clicking <a href=${resetPasswordUrl} target="_blank">Reset your password</a>.<br/><br/>If the above link does not work for some reason then copy paste this link in new tab ${resetPasswordUrl}<br/><br/> This link is valid only for 15 minutes.<br/>If you have not requested this, kindly ignore.`;
 
   try {
     // Send password reset email
@@ -1226,11 +1257,11 @@ export const VerifyAccount = asyncHandler(async function (req, res, next) {
  */
 
 export const updateProfile = asyncHandler(async function (req, res, next) {
-  const { firstName, lastName, bio, email } = req.body;
+  const { firstName, lastName, bio, email, username } = req.body;
   const { id } = req.user;
 
   // Check if at least one field is provided for update
-  if (!firstName && !lastName && !bio && !req.file && !email) {
+  if (!firstName && !lastName && !bio && !req.file && !email && !username) {
     return next(
       new AppError("At least one field is required for update.", 400)
     );
@@ -1242,14 +1273,15 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
   if (!user) {
     return next(new AppError("Invalid user id or user does not exist", 400));
   }
+  if(username && await User.findOne({username})) return next(new AppError("Username Already Registered.", 400))
   let emailreg = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/;
-  if (email && user.email !== email && emailreg.test(email)) {
-    // if (!user.isVerified) user.email = email;
-    // else return next(new AppError("Email can not be changed."))
-
+  if (email && user.email != email && emailreg.test(email)) {
+    if(await User.findOne({email})) return next( new AppError("Email Already Registered.", 400))
     user.email = email;
     user.isVerified = false;
+    user.isGoogleRegistered = false;
   }
+  if (username) user.username = username;
   if (firstName) user.firstName = firstName;
   if (lastName) user.lastName = lastName;
   if (bio) user.bio = bio;
@@ -1420,7 +1452,7 @@ export const DeleteUser = asyncHandler(async function (req, res, next) {
   user.isBlocked = true;
   await user.save();
 
-  // Delete all resources with the specified prefix 
+  // Delete all resources with the specified prefix
   try {
     await cloudinary.v2.api.delete_resources_by_prefix(
       `blog/posts/${user.username}`
@@ -1431,7 +1463,7 @@ export const DeleteUser = asyncHandler(async function (req, res, next) {
     );
   }
 
-  // Delete all resources with the specified prefix 
+  // Delete all resources with the specified prefix
   try {
     await cloudinary.v2.api.delete_resources_by_prefix(
       `blog/resource/${user.username}`
@@ -1441,7 +1473,6 @@ export const DeleteUser = asyncHandler(async function (req, res, next) {
       `Error deleting resources in blog/resource/${user.username}: ${error.error.message}`
     );
   }
-
 
   // Delete the folder and all resources within it
   try {
@@ -1514,6 +1545,14 @@ export const AllUsers = asyncHandler(async function (req, res, next) {
   });
 });
 
+/**
+ * @GetRegisteredUsers
+ * @Route {{sever}}/user/profile/search
+ * @Method get
+ * @Access private (only admin)
+ * @ReqData skip, searchTerm
+ */
+
 export const GetRegisteredUser = asyncHandler(async function (req, res, next) {
   const searchTerm = req.query.searchTerm;
   const skip = Number(req.query.skip) || 0;
@@ -1537,43 +1576,180 @@ export const GetRegisteredUser = asyncHandler(async function (req, res, next) {
   });
 });
 
+/**
+ * @RegisteredUsers
+ * @Route {{sever}}/user/google/auth
+ * @Method get
+ * @Access public
+ * @ReqData code(initial token);
+ */
 
-/* GET Google Authentication API. */
 export const googleAuth = asyncHandler(async (req, res, next) => {
   const code = req.query.code;
-  console.log("USER CREDENTIAL -> ", code);
 
   try {
     const googleRes = await oAuth2Client.getToken(code);
-  
-  oAuth2Client.setCredentials(googleRes.tokens);
-    console.log('token', googleRes.tokens.access_token);
-  const userRes = await axios.get(
+
+    oAuth2Client.setCredentials(googleRes.tokens);
+    const userRes = await axios.get(
       `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${googleRes.tokens.access_token}`
-);
+    );
 
-console.log('mydata', userRes.data)
+    if (!userRes || !userRes.data || !userRes?.data?.email) {
+      return next(
+        new AppError("User Data not found kindly register using form fields.", 400)
+      );
+    }
+    let user = await User.findOne({
+      email: userRes.data.email,
+    });
+    if (user) {
+      // Checking if the user has been blocked by admin
+      if (user.isBlocked) {
+        return next(
+          new AppError(
+            `Your account has been blocked. Please contact support`,
+            403
+          )
+        );
+      }
 
-// const tokenInfo = await oAuth2Client.getTokenInfo(
-//   oAuth2Client.credentials.access_token
-// );
-// console.log('info', tokenInfo)
-  } catch (error) {
-    console.log('error occured', error);
-  }
+      // Checking if the user's account is closed, then open it again
+      if (user.isClosed) {
+        user.isClosed = false;
+        await user.save();
+        user.info = "Account reopened successfully.";
+      }
+      if(!user.isGoogleRegistered) {
+        user.isGoogleRegistered = true;
+        await user.save();
+      }
+      if(!user.isVerified && userRes?.data?.verified_email) {
+        user.isVerified = true;
+        await user.save();
+      }
 
-  // console.log(userRes.data.data);
-  return res.json('true');
-  let user = await User.findOne({ email: userRes.data.email });
- 
-  if (!user) {
-      console.log('New User found');
-      user = await User.create({
-          name: userRes.data.name,
-          email: userRes.data.email,
-          image: userRes.data.picture,
+      // Generate a token for the logged-in user
+      const { accessToken, refreshToken } =
+        await generateAccessAndRefreshTokens(user._id);
+
+      // Sending the response with cookies
+      res
+        .status(200)
+        .cookie("accessToken", accessToken, CookieOptions)
+        .cookie("refreshToken", refreshToken, CookieOptions)
+        .json({
+          success: true,
+          message: "User logged in successfully",
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            bio: user.bio,
+            avatar: user.avatar,
+            role: user.role,
+            isVerified: user.isVerified,
+            tokens: { accessToken, refreshToken },
+          },
+        });
+    } else {
+      // If the user is not found, register the user
+      let username = userRes.data.given_name + '@' + userRes.data.email;
+      for(;;){
+        username = userRes.data.given_name + await generateRandomUsername();
+        console.log(username);
+        const user = await User.findOne({username})
+        if(!user) break;
+      }
+
+    const user = await User.create({
+      username,
+      email: userRes.data.email,
+      password: crypto.randomBytes(20).toString('hex'),
+      firstName: userRes?.data?.given_name || userRes?.data?.name.split()[0],
+      lastName: userRes?.data?.family_name || userRes?.data?.name.split()[1],
+      isGoogleRegistered: true,
+      isVerified: userRes?.data?.verified_email,
+      avatar: {
+        public_id: userRes?.data?.email,
+        secure_url:
+          "https://res.cloudinary.com/du9jzqlpt/image/upload/v1674647316/avatar_drzgxv.jpg",
+      },
+    });
+
+    // Uploading profile image to cloudinary and update the user's avatar
+    let avatarUrl;
+    if (userRes?.data?.picture && userRes?.data?.picture.length > 5) {
+      avatarUrl = userRes?.data?.picture;
+    } else {
+      avatarUrl = "https://res.cloudinary.com/du9jzqlpt/image/upload/v1674647316/avatar_drzgxv.jpg"
+    }
+      try {
+        const result = await cloudinary.v2.uploader.upload(avatarUrl, {
+          folder: "blog/user/avatar",
+          resource_type: "image",
+          width: 350,
+          height: 350,
+          gravity: "faces",
+          crop: "fill",
+          fetch_format: "auto",
+          quality: "auto",
+        });
+        if (result) {
+          user.avatar.public_id = result.public_id;
+          user.avatar.secure_url = result.secure_url;
+        }
+      } catch (error) {
+        console.log(error);
+        return next(
+          new AppError(
+            JSON.stringify(error) || "File not uploaded, please try again",
+            400
+          )
+        );
+      }
+
+    // Save the updated user to the database
+    await user.save({new: true});
+
+    // Define the email subject and message
+    const subject = `Welcome to Alcodemy Blog`;
+    const message = `<h2>Alcodemy Blog</h2><p>Hi ${user.firstName}, <br> Thanks for joining our team of Great Bloggers.</p>`;
+    const userEmail = user.email;
+    // Send the email to the user
+    sendEmail(userEmail, subject, message);
+
+    // Generate a token for the logged-in user
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
+      user._id
+    );
+    // Send a success response with the user's details
+    res
+      .status(201)
+      .cookie("accessToken", accessToken, CookieOptions)
+      .cookie("refreshToken", refreshToken, CookieOptions)
+      .json({
+        success: true,
+        message: "User created Successfully",
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          isVerified: user.isVerified,
+          bio: user.bio,
+          avatar: user.avatar,
+          role: user.role,
+          tokens: { accessToken, refreshToken },
+        },
       });
-  }
+    }
 
-  createSendToken(user, 201, res);
+  } catch (error) {
+    console.log("error occured", error);
+    return next(new AppError("Some Error Occurred.", 500))
+  }
 });

@@ -81,6 +81,10 @@ const userSchema = new Schema({
   resetToken: String,
   resetTokenExpiry: Date,
   verifyToken: String,
+  isGoogleRegistered: {
+    type: Boolean,
+    default: false
+  },
   verifyTokenExpiry: Date,
   refreshToken: String,
   isVerified: {

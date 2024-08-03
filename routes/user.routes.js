@@ -26,7 +26,7 @@ router.get('/profile', rate(60 * 60 * 1000, 35), isLoggedIn, isAdmin, AllUsers);
 router.get('/profile/chartdata', rate(60 * 60 * 1000, 30), isLoggedIn, authChartData);
 router.get('/profile/search', rate(60* 60 * 1000, 40), isLoggedIn, isAdmin, GetRegisteredUser);
 
-router.get('/google/callback', googleAuth);
+router.get('/google/auth', googleAuth);
 
 
 export default router;
