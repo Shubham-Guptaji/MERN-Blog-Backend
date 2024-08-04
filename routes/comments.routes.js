@@ -5,12 +5,12 @@ import rate from "../middlewares/requestLimit.js";
 
 const router = Router();
 
-router.post('/', rate(5*60*1000, 8), isLoggedIn, isVerified, CreateComment);
-router.get('/:blogId', rate(5*60*1000, 50), fetchComment);
+router.post('/', rate(5, 10), isLoggedIn, isVerified, CreateComment);
+router.get('/:blogId', rate(5, 25), fetchComment);
 router 
     .route('/:commentId')
-        .delete(rate(5*60*1000, 5), isLoggedIn, deleteComment)
-        .put(rate(5*60*1000, 8), isLoggedIn, editComment);
+        .delete(rate(5, 30), isLoggedIn, deleteComment)
+        .put(rate(5, 20), isLoggedIn, editComment);
 
 
 export default router;

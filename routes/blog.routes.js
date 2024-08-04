@@ -7,16 +7,16 @@ import rate from "../middlewares/requestLimit.js"
 const router = Router();
 
 
-router.post("/create", rate(15*60*1000, 8), isLoggedIn, isVerified, upload.single("postImage"), createBlog);
-router.get("/", rate(5*60*1000, 30), getHomeBlogs);
-router.get("/posts", rate(5*60*1000, 20), AllPosts);
-router.post("/tag", rate(5*60*1000, 30), tagBlog);
-router.patch("/publish/:id", rate(5*60*1000, 10), isLoggedIn, isVerified, PublishBlog);
-router.post("/:url", rate(5*60*1000, 20), getBlogpost);
+router.post("/create", rate(60, 10), isLoggedIn, isVerified, upload.single("postImage"), createBlog);
+router.get("/", rate(5, 30), getHomeBlogs);
+router.get("/posts", rate(5, 30), AllPosts);
+router.post("/tag", rate(5, 30), tagBlog);
+router.patch("/publish/:id", rate(5, 25), isLoggedIn, isVerified, PublishBlog);
+router.post("/:url", rate(5, 30), getBlogpost);
 router
     .route("/:id")
-        .put(rate(15*60*1000, 10), isLoggedIn, isVerified, upload.single("postImage"), UpdatePost)
-        .patch(rate(15*60*1000, 20), isLoggedIn, isVerified, unPublishBlog)
-        .delete(rate(15*60*1000, 12), isLoggedIn, isVerified, DeletePost);
+        .put(rate(30, 15), isLoggedIn, isVerified, upload.single("postImage"), UpdatePost)
+        .patch(rate(5, 25), isLoggedIn, isVerified, unPublishBlog)
+        .delete(rate(5, 25), isLoggedIn, isVerified, DeletePost);
 
 export default router;

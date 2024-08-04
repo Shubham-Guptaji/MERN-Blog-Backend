@@ -6,27 +6,27 @@ import rate from "../middlewares/requestLimit.js";
 
 const router = Router();
 
-router.post('/register', rate(15 * 60 * 1000, 10), upload.single('avatar'), registerUser);
-router.post('/login', rate(15 * 60 * 1000, 10), loginUser);
-router.post('/logout', rate(60 * 60 * 1000, 25), isLoggedIn, userLogOut);
-router.post('/refresh-token', rate(15 * 60 * 1000, 5), refreshAccessToken);
-router.post('/forgot-password', rate(15 * 60 * 1000, 5), forgotPassword);
-router.post('/reset/:resetToken', rate(15 * 60 * 1000, 10), resetPassword);
-router.post("/change-password", rate(60 * 60 * 1000, 10), isLoggedIn, isVerified, changePassword);
-router.post('/profile/:username', rate(15 * 60 * 1000, 30), isLoggedIn, userProfile);
-router.patch('/profile/:id/unblock', rate(60 * 60 * 1000, 35), isLoggedIn, isAdmin, unBlockUser);
-router.patch('/profile/:id/block', rate(60 * 60 * 1000, 35), isLoggedIn, isAdmin, blockUser);
-router.patch('/profile/close', rate(60 * 60 * 1000, 5), isLoggedIn, CloseAccount);
-router.post('/verify/', rate(60 * 60 * 1000, 10), isLoggedIn, VerifyTokenEmail);
-router.patch('/profile/:username/verify/:token', rate(60 * 60 * 1000, 5), VerifyAccount)
-router.patch('/profile', rate(60 * 60 * 1000, 8) , isLoggedIn, upload.single('avatar'), updateProfile);
-router.post('/backgroundImage', rate(60 * 60 * 1000, 8), isLoggedIn, isVerified, upload.single('bgImage'), updateBgImage);
-router.delete('/profile/:id', rate(60 * 60 * 1000, 35), isLoggedIn, DeleteUser);
-router.get('/profile', rate(60 * 60 * 1000, 35), isLoggedIn, isAdmin, AllUsers);
-router.get('/profile/chartdata', rate(60 * 60 * 1000, 30), isLoggedIn, authChartData);
-router.get('/profile/search', rate(60* 60 * 1000, 40), isLoggedIn, isAdmin, GetRegisteredUser);
+router.post('/register', rate(15, 5), upload.single('avatar'), registerUser);
+router.post('/login', rate(10, 10), loginUser);
+router.post('/logout', rate(10, 10), isLoggedIn, userLogOut);
+router.post('/refresh-token', rate(15, 10), refreshAccessToken);
+router.post('/forgot-password', rate(60, 5), forgotPassword);
+router.post('/reset/:resetToken', rate(60, 5), resetPassword);
+router.post("/change-password", rate(60, 5), isLoggedIn, isVerified, changePassword);
+router.post('/profile/:username', rate(15, 30), isLoggedIn, userProfile);
+router.patch('/profile/:id/unblock', rate(60, 30), isLoggedIn, isAdmin, unBlockUser);
+router.patch('/profile/:id/block', rate(60, 30), isLoggedIn, isAdmin, blockUser);
+router.patch('/profile/close', rate(60, 5), isLoggedIn, CloseAccount);
+router.post('/verify/', rate(60, 5), isLoggedIn, VerifyTokenEmail);
+router.patch('/profile/:username/verify/:token', rate(60, 5), VerifyAccount)
+router.patch('/profile', rate(60, 8) , isLoggedIn, upload.single('avatar'), updateProfile);
+router.post('/backgroundImage', rate(60, 5), isLoggedIn, isVerified, upload.single('bgImage'), updateBgImage);
+router.delete('/profile/:id', rate(60, 15), isLoggedIn, DeleteUser);
+router.get('/profile', rate(5, 25), isLoggedIn, isAdmin, AllUsers);
+router.get('/profile/chartdata', rate(15, 30), isLoggedIn, authChartData);
+router.get('/profile/search', rate(60, 40), isLoggedIn, isAdmin, GetRegisteredUser);
 
-router.get('/google/auth', googleAuth);
+router.get('/google/auth', rate(10, 10), googleAuth);
 
 
 export default router;
