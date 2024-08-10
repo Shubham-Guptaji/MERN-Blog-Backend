@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+
 import asyncHandler from "../middlewares/async.middleware.js";
 import Blog from "../models/blog.model.js";
 import Comment from '../models/comment.model.js';
@@ -8,6 +8,7 @@ import fs from 'fs/promises';
 import cloudinary from 'cloudinary';
 import Resourcefile from '../models/resources.model.js';
 import Like from '../models/like.model.js';
+import { redisClient } from '../app.js';
 
 // array shuffle function
 function shuffleArray(array) {
@@ -133,7 +134,11 @@ export const createBlog = asyncHandler(async function (req, res, next) {
     await newBlog.save();
     await user.save();
 
-
+    try {
+        await redisClient.del(`homePagePosts`);
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
 
     // Respond with success message and the new blog post
     res.status(201).json({
@@ -166,6 +171,13 @@ export const unPublishBlog = asyncHandler(async function (req, res, next) {
     blog.isPublished = false;
     await blog.save();
 
+    try {
+        await redisClient.del(`homePagePosts`);
+    
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
+
     res.status(200).json({
         success: true,
         message: 'Blog unpublished successfully',
@@ -195,6 +207,12 @@ export const PublishBlog = asyncHandler(async function (req, res, next) {
     blog.isPublished = true;
     await blog.save();
 
+    try {
+        await redisClient.del(`homePagePosts`);
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
+
     res.status(200).json({
         success: true,
         message: 'Blog published successfully',
@@ -210,6 +228,19 @@ export const PublishBlog = asyncHandler(async function (req, res, next) {
  */
 
 export const getHomeBlogs = asyncHandler(async function (req, res, next) {
+
+    // Check if post data is in Redis
+    try {
+        const cachedPost = await redisClient.get(`homePagePosts`);
+    
+        if (cachedPost) {
+            // If cached, return the post data
+            res.status(200).json({ success: true, message: "Posts fetched successfully",  data :JSON.parse(cachedPost)});
+        }
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
+
     const [trendingPosts, authors] = await Promise.all([
         Blog.aggregate([
             {
@@ -324,7 +355,16 @@ export const getHomeBlogs = asyncHandler(async function (req, res, next) {
     // Map over the array of trending posts to get the trending keywords
     const keywords = trendingPosts.flatMap(post => post.tags ? post.tags.filter(tag => tag.trim()).map(tag => tag.toLowerCase()) : []);
     const topKeywords = shuffleArray(Array.from(new Set(keywords))).slice(0, Math.min(keywords.length, 15));
-    res.status(200).json({ success: true, message: "Posts fetched successfully", data: { trendingPosts, authorPosts: authorPosts.slice(0, 20), topKeywords } });
+
+    let data = { trendingPosts, authorPosts: authorPosts.slice(0, 20), topKeywords };
+    // Caching the data in redis for 30 mins
+    try {
+        await redisClient.setEx(`homePagePosts`, 1800, JSON.stringify(data));
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
+
+    res.status(200).json({ success: true, message: "Posts fetched successfully",  data});
 });
 
 
@@ -629,6 +669,12 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
     // Save the updated blog post
     await blog.save();
 
+    try {
+        await redisClient.del(`homePagePosts`);
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
+
     // Respond with success message and updated blog post
     res.status(200).json({
         success: true,
@@ -679,6 +725,12 @@ export const DeletePost = asyncHandler(async function (req, res, next) {
         $inc: { likes: -postlikes },
         $inc: { comments: -postcomments }
     }).exec();
+
+    try {
+        await redisClient.del(`homePagePosts`);
+    } catch (error) {
+        console.log('Install redis to use cache functionality')
+    }
 
     // Respond with success message and post details
     res.status(200).json({

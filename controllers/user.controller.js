@@ -75,10 +75,12 @@ const getWeeklyPartitions = (numberOfWeeks = 8) => {
   // Calculate start date for the last 7 weeks (considering today)
   const startOfWeek = new Date(today);
   // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) + 1 - numberOfWeeks * 7);
-  // startOfWeek.setDate(today.getDate() - (today.getDay() || 7) - numberOfWeeks * 7);
-  startOfWeek.setDate(
-    today.getDate() - (today.getDay() || 6) - numberOfWeeks * 7 - 1
-  );
+  startOfWeek.setDate(today.getDate() -  numberOfWeeks * 7);
+
+  // startOfWeek.setDate(
+  //   today.getDate() - (today.getDay() || 6) - numberOfWeeks * 7 - 1
+  // );
+
   while (startOfWeek < today) {
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 7);
@@ -934,6 +936,12 @@ export const blockUser = asyncHandler(async function (req, res, next) {
   // Save the user
   await user.save();
 
+  try {
+    await redisClient.del(`homePagePosts`);
+  } catch (error) {
+    console.log('Install redis to use cache functionality')
+  }
+
   // Send a success response
   res.status(200).json({
     success: true,
@@ -976,6 +984,12 @@ export const unBlockUser = asyncHandler(async function (req, res, next) {
 
   // Save the user
   await user.save();
+
+  try {
+    await redisClient.del(`homePagePosts`);
+  } catch (error) {
+    console.log('Install redis to use cache functionality')
+  }
 
   // Send a success response
   res.status(200).json({
@@ -1333,6 +1347,12 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
     user._id
   );
 
+  try {
+    await redisClient.del(`homePagePosts`);
+  } catch (error) {
+    console.log('Install redis to use cache functionality')
+  }
+
   res.status(200).json({
     success: true,
     message: "Profile updated successfully",
@@ -1511,6 +1531,12 @@ export const DeleteUser = asyncHandler(async function (req, res, next) {
 
   // Remove the post ID from the user's blogs array
   await User.findByIdAndDelete(id);
+
+  try {
+    await redisClient.del(`homePagePosts`);
+  } catch (error) {
+    console.log('Install redis to use cache functionality')
+  }
 
   // Respond with success message and post details
   res.status(200).json({
@@ -1725,6 +1751,14 @@ export const googleAuth = asyncHandler(async (req, res, next) => {
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
       user._id
     );
+
+    try {
+      await redisClient.del(`homePagePosts`);
+    } catch (error) {
+      console.log('Install redis to use cache functionality')
+    }
+
+
     // Send a success response with the user's details
     res
       .status(201)
