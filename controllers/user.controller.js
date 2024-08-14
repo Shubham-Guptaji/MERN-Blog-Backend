@@ -1287,7 +1287,7 @@ export const updateProfile = asyncHandler(async function (req, res, next) {
   if (!user) {
     return next(new AppError("Invalid user id or user does not exist", 400));
   }
-  if(username && await User.findOne({username})) return next(new AppError("Username Already Registered.", 400))
+  if(username && user.username != username && await User.findOne({username})) return next(new AppError("Username Already Registered.", 400))
   let emailreg = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/;
   if (email && user.email != email && emailreg.test(email)) {
     if(await User.findOne({email})) return next( new AppError("Email Already Registered.", 400))
