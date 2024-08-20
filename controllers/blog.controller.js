@@ -600,7 +600,6 @@ export const UpdatePost = asyncHandler(async function (req, res, next) {
     // Getting post id from parameter
     const { id } = req.params;
     const { authorId } = req.body;
-
     // Authorization
     if (req.user.id !== authorId && req.user.role !== "admin") {
         if (req.file) fs.rm(req.file.path); // Remove temporary file if exists
