@@ -1,0 +1,25 @@
+.policy{
+    @apply my-5;
+}
+.policy h2{
+    @apply text-3xl text-indigo-600 mt-4 mb-2 font-semibold;
+}
+.policy h3{
+    @apply text-2xl text-indigo-600 mt-3 mb-2 font-semibold;
+}
+.policy h4{
+    @apply text-xl text-indigo-600 mt-2 mb-2 font-semibold;
+}
+.policy p{
+    @apply font-normal leading-7 max-w-none break-words mb-3 text-justify; 
+}
+.policy ul{
+    @apply list-disc pl-8;
+}
+.policy ul li {
+    @apply mb-3
+}
+
+.policy a {
+    @apply text-indigo-700;
+}
