@@ -135,7 +135,7 @@ export const deleteComment = async (req, res, next) => {
         }
 
         // Delete the comment and remove its reference from the associated blog
-        commentAuthor = comment.blogAuthor;
+        let commentAuthor = comment.blogAuthor;
         await Promise.all([
             comment.deleteOne(),
             Blog.updateOne(
