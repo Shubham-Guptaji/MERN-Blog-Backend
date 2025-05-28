@@ -1,4 +1,4 @@
-## [Production Site](https://blog.alcodemy.tech)
+## [Production Site](https://blog.alcodemy.space)
 # [Blog Website Frontend Repository](https://github.com/Shubham-Guptaji/MERN-Blog-Frontend)
 
 # Blog Website Backend
