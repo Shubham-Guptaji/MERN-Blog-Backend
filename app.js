@@ -6,6 +6,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import errorMiddleware from "./middlewares/error.middleware.js";
 import redis from 'redis';
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 
@@ -21,11 +22,15 @@ app.use(
   })
 )
 
+// Initialize Google GenAI client
+export const ai = new GoogleGenAI({});
+
 // Create Redis client
 export const redisClient = redis.createClient({
   host: '127.0.0.1',
   port: 6379,
 });
+
 
 // Set up logging and cookie parsing
 app.use(morgan('dev')); // Use 'dev' logging format for development

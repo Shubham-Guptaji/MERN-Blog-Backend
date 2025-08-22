@@ -3,6 +3,7 @@ import { isLoggedIn, isVerified } from "../middlewares/auth.middleware.js";
 import { AllPosts, DeletePost, PublishBlog, UpdatePost, createBlog, getBlogpost, getHomeBlogs, tagBlog, unPublishBlog } from "../controllers/blog.controller.js";
 import upload from "../middlewares/multer.middleware.js";
 import rate from "../middlewares/requestLimit.js"
+import { generateAISummary } from "../controllers/ai.controller.js";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router
         .put(rate(30, 15), isLoggedIn, isVerified, upload.single("postImage"), UpdatePost)
         .patch(rate(5, 25), isLoggedIn, isVerified, unPublishBlog)
         .delete(rate(5, 25), isLoggedIn, isVerified, DeletePost);
+router.get("/summarize/:postId", rate(300, 10), isLoggedIn, isVerified, generateAISummary);
 
 export default router;
